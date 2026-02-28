@@ -1,0 +1,129 @@
+
+// Phase 41-50 Extensions
+
+model Project {
+  id             String       @id @default(cuid())
+  organizationId String
+  clientId       String?
+  name           String
+  description    String?
+  color          String?      @default("#000000")
+  hourlyRate     Float?
+  budget         Float?
+  currency       String       @default("CZK")
+  status         String       @default("ACTIVE") // ACTIVE, COMPLETED, ARCHIVED
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client?      @relation(fields: [clientId], references: [id])
+  timeEntries    TimeEntry[]
+  invoices       Invoice[]
+  expenses       Expense[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model TimeEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  projectId      String?
+  taskId         String?      // Optional task reference
+  
+  description    String
+  startTime      DateTime
+  endTime        DateTime?
+  duration       Int?         // In seconds
+  billable       Boolean      @default(true)
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+  project        Project?     @relation(fields: [projectId], references: [id])
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Product {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  sku            String?      // Stock Keeping Unit
+  ean            String?      // Barcode
+  unit           String       @default("ks")
+  
+  buyPrice       Float        @default(0)
+  sellPrice      Float        @default(0)
+  currency       String       @default("CZK")
+  vatRate        Float        @default(21)
+  
+  stockQuantity  Float        @default(0)
+  minStockLevel  Float        @default(0)
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  movements      StockMovement[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model StockMovement {
+  id             String       @id @default(cuid())
+  productId      String
+  type           String       // IN, OUT
+  quantity       Float
+  date           DateTime     @default(now())
+  note           String?
+  
+  product        Product      @relation(fields: [productId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+}
+
+model Vehicle {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  plate          String
+  fuelType       String?      // DIESEL, PETROL, ELECTRIC
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  logs           VehicleLog[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model VehicleLog {
+  id             String       @id @default(cuid())
+  vehicleId      String
+  date           DateTime
+  startKm        Float
+  endKm          Float
+  distance       Float
+  purpose        String?
+  from           String
+  to             String
+  
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model ApprovalRequest {
+  id             String       @id @default(cuid())
+  invoiceId      String       @unique
+  requesterId    String
+  approverId     String?      // Who actually approved it
+  status         String       @default("PENDING") // PENDING, APPROVED, REJECTED
+  note           String?
+  
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id])
+  requester      User         @relation("RequestedApprovals", fields: [requesterId], references: [id])
+  approver       User?        @relation("ActionedApprovals", fields: [approverId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}

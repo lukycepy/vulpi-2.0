@@ -1,0 +1,599 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Organization {
+  id           String       @id @default(cuid())
+  name         String
+  taxId        String?
+  vatId        String?
+  address      String?
+  web          String?
+  email        String?
+  phone        String?
+  logoUrl      String?
+  signatureUrl String?
+  
+  vatPayerStatus String      @default("NON_PAYER") // NON_PAYER, PAYER, IDENTIFIED_PERSON
+  defaultVatMode String      @default("STANDARD")  // STANDARD, REVERSE_CHARGE, OSS
+  
+  members      Membership[]
+  auditLogs    AuditLog[]
+  clients      Client[]
+  invoices     Invoice[]
+  bankDetails  BankDetail[]
+  
+  emailLogs      EmailLog[]
+  bankIntegrations BankIntegration[]
+  expenseCategories ExpenseCategory[]
+  expenses       Expense[]
+  recurringInvoices RecurringInvoice[]
+  
+  // Phase 41-50
+  projects       Project[]
+  products       Product[]
+  vehicles       Vehicle[]
+  timeEntries    TimeEntry[]
+  
+  // Phase 51-60
+  invoiceTemplates InvoiceTemplate[]
+  customFields     CustomFieldDefinition[]
+  roleDefinitions  RoleDefinition[] // Custom roles (RBAC)
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model BankDetail {
+  id             String       @id @default(cuid())
+  organizationId String
+  bankName       String
+  accountNumber  String
+  iban           String?
+  swift          String?
+  currency       String       @default("CZK")
+  isDefault      Boolean      @default(false)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invoices       Invoice[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Dispute {
+  id             String       @id @default(cuid())
+  invoiceId      String
+  clientId       String
+  message        String
+  status         String       @default("OPEN") // OPEN, RESOLVED, REJECTED
+  adminResponse  String?
+  
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  avatarUrl    String?
+  memberships  Membership[]
+  auditLogs    AuditLog[]
+  
+  // Phase 41-50
+  timeEntries    TimeEntry[]
+  requestedApprovals ApprovalRequest[] @relation("RequestedApprovals")
+  actionedApprovals  ApprovalRequest[] @relation("ActionedApprovals")
+
+  // Phase 51-60
+  impersonatedBy     ImpersonationLog[] @relation("ImpersonatedUser")
+  impersonations     ImpersonationLog[] @relation("Impersonator")
+
+  // Phase 61-70 Preparation
+  accounts           Account[]
+  twoFactorEnabled   Boolean      @default(false)
+  twoFactorSecret    String?      // TOTP secret
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model TwoFactorToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String // Enum Role handled in app
+  user           User         @relation(fields: [userId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  roleDefinition RoleDefinition? @relation(fields: [roleDefId], references: [id])
+  roleDefId      String?      // Optional link to custom role
+
+  expiresAt      DateTime?    // Time-limited access
+  
+  @@unique([userId, organizationId])
+}
+
+model RoleDefinition {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  permissions    String       // JSON string of permissions
+  isSystem       Boolean      @default(false)
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  memberships    Membership[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+}
+
+model ImpersonationLog {
+  id             String       @id @default(cuid())
+  impersonatorId String
+  targetUserId   String
+  reason         String?
+  startedAt      DateTime     @default(now())
+  endedAt        DateTime?
+  
+  impersonator   User         @relation("Impersonator", fields: [impersonatorId], references: [id])
+  targetUser     User         @relation("ImpersonatedUser", fields: [targetUserId], references: [id])
+}
+
+model Client {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  taxId          String? // ICO
+  vatId          String? // DIC
+  address        String?
+  email          String?
+  phone          String?
+  defaultDueDays Int          @default(14)
+  defaultCurrency String      @default("CZK")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invoices       Invoice[]
+  
+  emailLogs      EmailLog[]
+  recurringInvoices RecurringInvoice[]
+  
+  // Phase 41-50
+  projects       Project[]
+  webAccess      Boolean      @default(false)
+  accessCode     String?      // Simple code for client portal login
+  disputes       Dispute[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  clientId       String
+  number         String        // Cislo faktury
+  type           String        // FAKTURA, PROFORMA, NABIDKA
+  status         String        // DRAFT, ISSUED, PAID, CANCELLED, PARTIAL
+  paidAmount     Float         @default(0)
+  issuedAt       DateTime      @default(now())
+  dueAt          DateTime
+  variableSymbol String?
+  constantSymbol String?
+  specificSymbol String?
+  currency       String        @default("CZK")
+  totalAmount    Float         @default(0)
+  totalVat       Float         @default(0)
+  notes          String?
+  bankDetailId   String?
+
+  // Phase 21-30 Extensions
+  vatMode        String        @default("STANDARD") // STANDARD, REVERSE_CHARGE, OSS
+  exchangeRate   Float         @default(1)
+  discount       Float         @default(0) // Percentage discount
+  totalDiscount  Float         @default(0) // Calculated total discount amount
+  isLocked       Boolean       @default(false)
+  relatedId      String?       // For Credit Notes or converted documents
+  
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  client         Client        @relation(fields: [clientId], references: [id])
+  bankDetail     BankDetail?   @relation(fields: [bankDetailId], references: [id])
+  items          InvoiceItem[]
+  attachments    Attachment[]
+  
+  emailLogs      EmailLog[]
+  bankMovements  BankMovement[]
+  
+  // Phase 41-50
+  projectId      String?
+  project        Project?     @relation(fields: [projectId], references: [id])
+  approvalRequest ApprovalRequest?
+  disputes        Dispute[]
+
+  // Phase 51-60
+  templateId     String?
+  template       InvoiceTemplate? @relation(fields: [templateId], references: [id])
+  customFields   InvoiceCustomFieldValue[]
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Float
+  unit        String   @default("ks")
+  unitPrice   Float
+  vatRate     Float
+  discount    Float    @default(0) // Percentage discount
+  totalAmount Float
+  
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  invoiceId String
+  fileName  String
+  fileType  String
+  fileUrl   String
+  fileSize  Int
+  createdAt DateTime @default(now())
+
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  action         String
+  entityId       String?
+  oldData        String?      // JSON string
+  newData        String?      // JSON string
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+// Phase 31-40 Extensions
+
+model EmailLog {
+  id             String       @id @default(cuid())
+  organizationId String?      // Optional for now, but good practice
+  invoiceId      String?
+  clientId       String?
+  subject        String
+  body           String
+  status         String       @default("SENT") // SENT, FAILED, OPENED
+  sentAt         DateTime     @default(now())
+  openedAt       DateTime?
+  messageId      String?
+  recipient      String
+  
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  invoice        Invoice?     @relation(fields: [invoiceId], references: [id])
+  client         Client?      @relation(fields: [clientId], references: [id])
+}
+
+model RecurringInvoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  clientId       String
+  templateName   String
+  cronExpression String       // e.g. "0 0 1 * *" for monthly
+  nextRunAt      DateTime
+  lastRunAt      DateTime?
+  active         Boolean      @default(true)
+  
+  // Template data (JSON)
+  invoiceData    String       
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model BankIntegration {
+  id             String       @id @default(cuid())
+  organizationId String
+  provider       String       // FIO, RB
+  encryptedToken String
+  encryptedKey   String?      // For RB which might need cert/key
+  isActive       Boolean      @default(true)
+  lastSyncAt     DateTime?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  movements      BankMovement[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model BankMovement {
+  id             String       @id @default(cuid())
+  bankIntegrationId String?
+  invoiceId      String?      // Linked invoice
+  
+  transactionId  String       // Bank's ID
+  amount         Float
+  currency       String
+  date           DateTime
+  
+  variableSymbol String?
+  constantSymbol String?
+  specificSymbol String?
+  
+  accountName    String?
+  accountInfo    String?
+  message        String?
+  
+  status         String       @default("UNMATCHED") // UNMATCHED, MATCHED, IGNORED, PROPOSED, PROPOSED_MULTI
+  
+  bankIntegration BankIntegration? @relation(fields: [bankIntegrationId], references: [id])
+  invoice         Invoice?    @relation(fields: [invoiceId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model ExpenseCategory {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  color          String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  expenses       Expense[]
+}
+
+model Expense {
+  id             String       @id @default(cuid())
+  organizationId String
+  categoryId     String?
+  
+  description    String
+  amount         Float
+  currency       String       @default("CZK")
+  date           DateTime
+  
+  supplierName   String?
+  supplierId     String?      // ID or VAT ID
+  
+  receiptUrl     String?      // Image/PDF
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  category       ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  
+  // Phase 41-50
+  projectId      String?
+  project        Project?     @relation(fields: [projectId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Phase 41-50 Extensions
+
+model Project {
+  id             String       @id @default(cuid())
+  organizationId String
+  clientId       String?
+  name           String
+  description    String?
+  color          String?      @default("#000000")
+  hourlyRate     Float?
+  budget         Float?
+  currency       String       @default("CZK")
+  status         String       @default("ACTIVE") // ACTIVE, COMPLETED, ARCHIVED
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client?      @relation(fields: [clientId], references: [id])
+  timeEntries    TimeEntry[]
+  invoices       Invoice[]
+  expenses       Expense[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model TimeEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  projectId      String?
+  taskId         String?      // Optional task reference
+  
+  description    String
+  startTime      DateTime
+  endTime        DateTime?
+  duration       Int?         // In seconds
+  billable       Boolean      @default(true)
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+  project        Project?     @relation(fields: [projectId], references: [id])
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Product {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  sku            String?      // Stock Keeping Unit
+  ean            String?      // Barcode
+  unit           String       @default("ks")
+  
+  buyPrice       Float        @default(0)
+  sellPrice      Float        @default(0)
+  currency       String       @default("CZK")
+  vatRate        Float        @default(21)
+  
+  stockQuantity  Float        @default(0)
+  minStockLevel  Float        @default(0)
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  movements      StockMovement[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model StockMovement {
+  id             String       @id @default(cuid())
+  productId      String
+  type           String       // IN, OUT
+  quantity       Float
+  date           DateTime     @default(now())
+  note           String?
+  
+  product        Product      @relation(fields: [productId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+}
+
+model Vehicle {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  plate          String
+  fuelType       String?      // DIESEL, PETROL, ELECTRIC
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  logs           VehicleLog[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model VehicleLog {
+  id             String       @id @default(cuid())
+  vehicleId      String
+  date           DateTime
+  startKm        Float
+  endKm          Float
+  distance       Float
+  purpose        String?
+  from           String
+  to             String
+  
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model ApprovalRequest {
+  id             String       @id @default(cuid())
+  invoiceId      String       @unique
+  requesterId    String
+  approverId     String?      // Who actually approved it
+  status         String       @default("PENDING") // PENDING, APPROVED, REJECTED
+  note           String?
+  
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id])
+  requester      User         @relation("RequestedApprovals", fields: [requesterId], references: [id])
+  approver       User?        @relation("ActionedApprovals", fields: [approverId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Phase 51-60 Extensions
+
+model InvoiceTemplate {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  
+  // Visual settings
+  primaryColor   String       @default("#000000")
+  secondaryColor String       @default("#ffffff")
+  fontFamily     String       @default("Helvetica")
+  customFontUrl  String?      // URL to custom font file (woff/woff2)
+  logoPosition   String       @default("left") // left, center, right
+  showQrCode     Boolean      @default(true)
+  showSignature  Boolean      @default(true)
+  
+  // Advanced customization
+  customCss      String?      // For experts
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invoices       Invoice[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model CustomFieldDefinition {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  key            String       // Machine readable key (e.g., "project_code")
+  type           String       // TEXT, NUMBER, DATE, BOOLEAN
+  description    String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  values         InvoiceCustomFieldValue[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model InvoiceCustomFieldValue {
+  id             String                @id @default(cuid())
+  invoiceId      String
+  fieldId        String
+  value          String                // Stored as string, cast based on definition type
+
+  invoice        Invoice               @relation(fields: [invoiceId], references: [id])
+  definition     CustomFieldDefinition @relation(fields: [fieldId], references: [id])
+
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([invoiceId, fieldId])
+}
