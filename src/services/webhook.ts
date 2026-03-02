@@ -2,6 +2,36 @@
 import { prisma } from "@/lib/prisma";
 import { createHmac } from "crypto";
 
+export async function sendDiscordNotification(webhookUrl: string, invoice: any, clientName: string) {
+    if (!webhookUrl || !webhookUrl.includes("discord.com")) return;
+
+    try {
+        const payload = {
+            username: "Vulpi Bot 🦊",
+            embeds: [{
+                title: "🎉 Nová schválená faktura!",
+                color: 15105570, // Orange color
+                fields: [
+                    { name: "Číslo faktury", value: invoice.number, inline: true },
+                    { name: "Klient", value: clientName, inline: true },
+                    { name: "Částka", value: `${invoice.totalAmount.toFixed(2)} ${invoice.currency}`, inline: true },
+                    { name: "Splatnost", value: new Date(invoice.dueAt).toLocaleDateString("cs-CZ"), inline: true }
+                ],
+                footer: { text: "Vulpi.cz - Fakturace hrou" },
+                timestamp: new Date().toISOString()
+            }]
+        };
+
+        await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+    } catch (err) {
+        console.error("Failed to send Discord notification:", err);
+    }
+}
+
 export async function sendNotificationWebhook(webhookUrl: string, message: string) {
     if (!webhookUrl) return;
     

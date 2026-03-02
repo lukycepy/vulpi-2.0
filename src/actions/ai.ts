@@ -3,6 +3,7 @@
 
 import { getOcrProvider } from "@/lib/ocr/factory";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { prisma } from "@/lib/prisma";
 
 export async function askFoxAssistant(message: string, history: {role: 'user' | 'bot', text: string}[] = [], context?: any): Promise<string> {
   try {
@@ -47,39 +48,129 @@ export async function askFoxAssistant(message: string, history: {role: 'user' | 
   }
 }
 
-export async function analyzeSentiment(text: string): Promise<{ sentiment: "ANGRY" | "NEUTRAL" | "HAPPY", score: number }> {
-  // Mock implementation for now
-  // In a real app, this would call OpenAI or another AI service
-  
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
+export async function analyzeSentiment(text: string): Promise<{ sentiment: "ANGRY" | "NEUTRAL" | "HAPPY", score: number, priority: "LOW" | "MEDIUM" | "HIGH" }> {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.warn("Missing GEMINI_API_KEY");
+      return { sentiment: "NEUTRAL", score: 0.5, priority: "LOW" };
+    }
 
-  const lowerText = text.toLowerCase();
-  
-  // Simple heuristic keywords
-  if (lowerText.includes("špatn") || 
-      lowerText.includes("chyb") || 
-      lowerText.includes("nesouhlas") || 
-      lowerText.includes("reklam") || 
-      lowerText.includes("!")) {
-    return { sentiment: "ANGRY", score: 0.1 };
-  } else if (lowerText.includes("děkuj") || 
-             lowerText.includes("skvěl") || 
-             lowerText.includes("super") || 
-             lowerText.includes("spokojen")) {
-    return { sentiment: "HAPPY", score: 0.9 };
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const prompt = `
+      Analyzuj následující zprávu od klienta. 
+      Vrať pouze čistý JSON s vlastnostmi: 
+      - 'sentiment' (kladný, neutrální, záporný)
+      - 'score' (číslo 1-10)
+      - 'priority' (LOW, MEDIUM, HIGH). Naštvané zprávy mají HIGH.
+      
+      Zpráva: "${text}"
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const jsonString = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+    const data = JSON.parse(jsonString);
+
+    let sentiment: "ANGRY" | "NEUTRAL" | "HAPPY" = "NEUTRAL";
+    if (data.sentiment === "záporný") sentiment = "ANGRY";
+    if (data.sentiment === "kladný") sentiment = "HAPPY";
+
+    return {
+      sentiment,
+      score: data.score || 5,
+      priority: data.priority || "LOW"
+    };
+
+  } catch (error) {
+    console.error("Sentiment Analysis Error:", error);
+    return { sentiment: "NEUTRAL", score: 0.5, priority: "LOW" };
   }
-  
-  return { sentiment: "NEUTRAL", score: 0.5 };
 }
 
-export async function generateInvoiceDescription(input: string): Promise<string> {
+export async function generateItemDescription(itemName: string): Promise<string> {
     try {
-        const provider = getOcrProvider();
-        return await provider.analyzeInvoiceText(input);
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return itemName;
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `
+            Jsi profesionální copywriter. Uživatel zadá krátký název položky na faktuře.
+            Vygeneruj k tomu profesionální, 2-3 větý popis práce, který bude působit hodnotně pro klienta.
+            Vrať pouze samotný text.
+            
+            Položka: "${itemName}"
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text().trim();
     } catch (error) {
-        console.error("Failed to generate description:", error);
-        // Fallback to basic if provider fails
-        return input;
+        console.error("Description Generation Error:", error);
+        return itemName;
+    }
+}
+
+export async function predictFutureRevenue(organizationId: string): Promise<{ predictedAmount: number, reasoning: string } | null> {
+    try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) return null;
+
+        // Fetch paid invoices for last 6 months
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        const invoices = await prisma.invoice.findMany({
+            where: {
+                organizationId,
+                status: "PAID",
+                updatedAt: { gte: sixMonthsAgo }
+            },
+            select: {
+                totalAmount: true,
+                updatedAt: true
+            }
+        });
+
+        if (invoices.length === 0) return null;
+
+        // Aggregate by month
+        const monthlyRevenue: Record<string, number> = {};
+        invoices.forEach(inv => {
+            const month = inv.updatedAt.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' });
+            monthlyRevenue[month] = (monthlyRevenue[month] || 0) + inv.totalAmount;
+        });
+
+        const summary = Object.entries(monthlyRevenue)
+            .map(([month, amount]) => `${month}: ${amount.toFixed(0)} CZK`)
+            .join("\n");
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `
+            Zde jsou obraty firmy za posledních 6 měsíců:
+            ${summary}
+            
+            Analyzuj trend a odhadni obrat na další měsíc.
+            Vrať POUZE čistý JSON s vlastnostmi: 
+            - 'predictedAmount' (číslo, odhadovaná částka)
+            - 'reasoning' (krátké textové zdůvodnění v češtině, max 2 věty).
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+        return JSON.parse(text);
+
+    } catch (error) {
+        console.error("Revenue Prediction Error:", error);
+        return null;
     }
 }

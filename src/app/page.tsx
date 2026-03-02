@@ -18,6 +18,7 @@ import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 import { redirect } from "next/navigation";
 
 import { DashboardPreferencesWidget } from "@/components/dashboard/DashboardPreferencesWidget";
+import { RevenuePredictionWidget } from "@/components/dashboard/RevenuePredictionWidget";
 import { BadgesWidget } from "@/components/dashboard/BadgesWidget";
 import { ZenModeButton } from "@/components/dashboard/ZenModeButton";
 import { LazyCashflowChart, LazyClientShareChart, LazySalesHeatmap } from "@/components/dashboard/LazyCharts";
@@ -237,6 +238,9 @@ export default async function Home({
             expenses={metrics.expensesThisYear}
           />
         )}
+        
+        {/* AI Prediction Widget */}
+        <RevenuePredictionWidget organizationId={orgId} />
       </div>
 
       {/* Charts */}

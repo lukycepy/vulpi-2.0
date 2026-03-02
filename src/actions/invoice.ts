@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
+import { triggerWebhook, sendDiscordNotification, sendNotificationWebhook } from "@/services/webhook";
 // import { generateInvoicePdfBuffer } from "@/lib/pdf-server";
 // import { uploadToCloudStorage } from "@/lib/cloud-storage";
 // import { syncInvoiceToCloud } from "@/services/integrations/cloudSync";
@@ -292,7 +293,7 @@ export async function createInvoice(data: any) {
   redirect(`/invoices/${invoice.id}`);
 }
 
-export async function updateInvoice(id: string, data: any) {
+export async function updateInvoice(id: string, data: any, lastUpdatedAt?: Date | string) {
   const user = await getCurrentUser();
   if (!user) {
     throw new Error("Nejste přihlášen");
@@ -317,6 +318,17 @@ export async function updateInvoice(id: string, data: any) {
 
   if (!existingInvoice || existingInvoice.organizationId !== membership.organizationId) {
     throw new Error("Faktura nenalezena nebo nemáte oprávnění");
+  }
+
+  // Optimistic Concurrency Control
+  if (lastUpdatedAt) {
+      const dbTime = new Date(existingInvoice.updatedAt).getTime();
+      const clientTime = new Date(lastUpdatedAt).getTime();
+      
+      // Allow a small tolerance (e.g., 1000ms) for clock skew or precision loss
+      if (Math.abs(dbTime - clientTime) > 1000 && dbTime > clientTime) {
+          throw new Error("Konflikt: Tuto fakturu právě upravil jiný uživatel. Obnovte stránku pro načtení nejnovějších dat.");
+      }
   }
 
   if (existingInvoice.isLocked) {

@@ -9,43 +9,79 @@ export async function requestEmergencyAccess(organizationId: string) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Nejste přihlášen");
 
-  // Check if there is an existing pending request
-  // @ts-ignore - Prisma types might be out of sync
-  const existing = await prisma.emergencyAccess.findUnique({
+  // Check if user is a member of the organization
+  const membership = await prisma.membership.findFirst({
+    where: { userId: user.id, organizationId }
+  });
+
+  if (!membership) throw new Error("Nejste členem této organizace");
+
+  // Upsert the request
+  await prisma.emergencyAccess.upsert({
     where: {
         organizationId_userId: {
             organizationId,
             userId: user.id
         }
+    },
+    update: {
+        isPending: true,
+        requestedAt: new Date(),
+        targetRole: "ADMIN"
+    },
+    create: {
+        organizationId,
+        userId: user.id,
+        targetRole: "ADMIN",
+        isPending: true,
+        requestedAt: new Date()
     }
   });
-
-  if (existing) {
-      if (existing.isPending) {
-          throw new Error("Žádost již existuje a čeká na schválení (nebo vypršení lhůty)");
-      }
-      if (existing.grantedAt) {
-          throw new Error("Přístup byl již udělen");
-      }
-  }
-
-  // Create request
-  // @ts-ignore - Prisma types might be out of sync
-  await prisma.emergencyAccess.create({
-    data: {
-      organizationId,
-      userId: user.id,
-      targetRole: "ADMIN",
-      isPending: true,
-      requestedAt: new Date()
-    }
-  });
-
-  // Notify admins? (Email)
-  // ...
 
   revalidatePath("/settings/security");
   return { success: true };
+}
+
+export async function grantEmergencyAccess(accessId: string) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Nejste přihlášen");
+
+    // Verify current user permissions (e.g. they are SuperAdmin or Owner, or this is a self-grant via cron after timeout)
+    // For this scenario, let's assume an existing Admin is approving it manually.
+    
+    const request = await prisma.emergencyAccess.findUnique({
+        where: { id: accessId },
+        include: { organization: true }
+    });
+
+    if (!request) throw new Error("Žádost nenalezena");
+
+    const hasAccess = await hasPermission(user.id, request.organizationId, "manage_settings");
+    if (!hasAccess) throw new Error("Nemáte oprávnění schvalovat nouzový přístup");
+
+    await prisma.$transaction([
+        prisma.emergencyAccess.update({
+            where: { id: accessId },
+            data: {
+                isPending: false,
+                grantedAt: new Date()
+            }
+        }),
+        prisma.membership.update({
+            where: {
+                userId_organizationId: {
+                    userId: request.userId,
+                    organizationId: request.organizationId
+                }
+            },
+            data: {
+                role: request.targetRole
+            }
+        })
+    ]);
+
+    revalidatePath("/settings/security");
+    return { success: true };
 }
 
 export async function setEmergencyContact(userId: string) {

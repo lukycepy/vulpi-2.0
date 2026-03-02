@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { generateInvoiceDescription } from "@/actions/ai";
+import { generateItemDescription } from "@/actions/ai";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
@@ -93,7 +93,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
 
     setAiLoading(true);
     try {
-      const generated = await generateInvoiceDescription(aiInputText);
+      const generated = await generateItemDescription(aiInputText);
       if (generated) {
         updateItem(aiActiveItemIndex, "description", generated);
         setAiPopupOpen(false);
@@ -357,6 +357,8 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
       }
   };
 
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(initialData?.updatedAt ? new Date(initialData.updatedAt).toISOString() : null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -401,7 +403,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
       };
 
       if (initialData?.id) {
-        await updateInvoice(initialData.id, payload);
+        await updateInvoice(initialData.id, payload, lastUpdatedAt || undefined);
       } else {
         const result = await createInvoice(payload);
         
@@ -427,7 +429,11 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
       router.refresh();
     } catch (err) {
       console.error(err);
-      alert("Chyba při ukládání faktury: " + (err instanceof Error ? err.message : "Neznámá chyba"));
+      if (err instanceof Error && err.message.includes("Konflikt")) {
+          alert(err.message);
+      } else {
+          alert("Chyba při ukládání faktury: " + (err instanceof Error ? err.message : "Neznámá chyba"));
+      }
     } finally {
       setLoading(false);
     }

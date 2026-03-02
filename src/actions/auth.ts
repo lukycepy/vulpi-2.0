@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 import bcrypt from "bcryptjs";
@@ -20,6 +20,7 @@ export async function login(formData: FormData) {
   try {
     const user = await prisma.user.findUnique({
       where: { email },
+      include: { memberships: true }
     });
 
     if (!user) {
@@ -30,6 +31,47 @@ export async function login(formData: FormData) {
 
     if (!isValid) {
       return { error: "Neplatný email nebo heslo" };
+    }
+
+    // Geolocation Logic
+    try {
+        const headersList = await headers();
+        const ip = headersList.get("x-forwarded-for")?.split(",")[0] || "unknown";
+        const userAgent = headersList.get("user-agent") || "unknown";
+        
+        let locationData = { city: "Unknown", country: "Unknown" };
+        
+        if (ip !== "unknown" && ip !== "::1" && ip !== "127.0.0.1") {
+            try {
+                const response = await fetch(`https://ipapi.co/${ip}/json/`);
+                if (response.ok) {
+                    const geo = await response.json();
+                    locationData = {
+                        city: geo.city || "Unknown",
+                        country: geo.country_name || "Unknown"
+                    };
+                }
+            } catch (geoError) {
+                console.error("GeoIP fetch failed:", geoError);
+            }
+        }
+
+        // Log login if user belongs to an organization
+        const primaryOrgId = user.memberships[0]?.organizationId;
+        if (primaryOrgId) {
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.id,
+                    organizationId: primaryOrgId,
+                    action: "USER_LOGIN",
+                    ipAddress: ip,
+                    userAgent: userAgent,
+                    newData: JSON.stringify({ ip, ...locationData })
+                }
+            });
+        }
+    } catch (logError) {
+        console.error("Failed to log login:", logError);
     }
 
     if (user.twoFactorEnabled) {
