@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { X, MessageSquare, Send } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { X, MessageSquare, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { askFoxAssistant } from "@/actions/ai";
 
 export function ChatbotWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,27 +14,39 @@ export function ChatbotWidget() {
     { role: 'bot', text: 'Ahoj! Jsem Liška Vulpi 🦊. S čím potřebuješ poradit?' }
   ]);
   const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const toggleChat = () => setIsOpen(!isOpen);
 
-  const handleQuestion = (question: string, answer: string) => {
-    setMessages(prev => [
-      ...prev, 
-      { role: 'user', text: question },
-      { role: 'bot', text: answer }
-    ]);
-  };
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isOpen]);
 
-  const handleSend = () => {
-    if (!inputValue.trim()) return;
+  const handleSend = async (overrideText?: string) => {
+    const textToSend = overrideText || inputValue;
+    if (!textToSend.trim() || isLoading) return;
     
-    setMessages(prev => [...prev, { role: 'user', text: inputValue }]);
+    setMessages(prev => [...prev, { role: 'user', text: textToSend }]);
     setInputValue("");
+    setIsLoading(true);
     
-    // Simple echo/fallback for custom input
-    setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'bot', text: "Omlouvám se, na tuto konkrétní otázku zatím neznám odpověď. Zkuste prosím vybrat jednu z možností níže nebo kontaktujte podporu." }]);
-    }, 1000);
+    try {
+        // Send history excluding the last message which is what we are sending now, 
+        // and filtering out the initial greeting if it's from bot
+        const historyToSend = messages.slice(1).map(m => ({
+            role: m.role,
+            text: m.text
+        }));
+
+        const response = await askFoxAssistant(textToSend, historyToSend);
+        setMessages(prev => [...prev, { role: 'bot', text: response }]);
+    } catch (error) {
+        setMessages(prev => [...prev, { role: 'bot', text: "Promiň, něco se pokazilo. Zkus to prosím znovu. 🦊" }]);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const FAQ = [
@@ -68,6 +81,12 @@ export function ChatbotWidget() {
                         {msg.text}
                     </div>
                     ))}
+                    {isLoading && (
+                        <div className="bg-white self-start text-gray-800 border border-gray-100 rounded-bl-none p-3 rounded-lg shadow-sm">
+                            <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} />
                 </div>
              </div>
              <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none h-12" />
@@ -80,7 +99,7 @@ export function ChatbotWidget() {
                       variant="outline" 
                       size="sm" 
                       className="whitespace-nowrap text-xs h-7 px-2 border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800"
-                      onClick={() => handleQuestion(item.q, item.a)}
+                      onClick={() => handleSend(item.q)}
                     >
                       {item.q}
                     </Button>
@@ -93,8 +112,9 @@ export function ChatbotWidget() {
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    disabled={isLoading}
                   />
-                  <Button size="icon" className="h-9 w-9 bg-orange-600 hover:bg-orange-700" onClick={handleSend}>
+                  <Button size="icon" className="h-9 w-9 bg-orange-600 hover:bg-orange-700" onClick={() => handleSend()} disabled={isLoading}>
                       <Send className="h-4 w-4" />
                   </Button>
               </div>

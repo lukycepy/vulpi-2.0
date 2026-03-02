@@ -5,12 +5,12 @@ import { triggerWebhook, sendNotificationWebhook } from "@/services/webhook";
 export async function matchPayments(orgId?: string) {
   const whereClause: any = { status: "UNMATCHED" };
   if (orgId) {
-    whereClause.integration = { organizationId: orgId };
+    whereClause.bankIntegration = { organizationId: orgId };
   }
 
   const movements = await prisma.bankMovement.findMany({
     where: whereClause,
-    include: { integration: true },
+    include: { bankIntegration: true },
   });
 
   let matchedCount = 0;

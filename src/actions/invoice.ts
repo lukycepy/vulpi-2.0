@@ -93,6 +93,29 @@ function calculateInvoiceTotals(items: InvoiceItemData[], vatMode: string = "STA
   };
 }
 
+export async function togglePinInvoice(id: string) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const invoice = await prisma.invoice.findUnique({ where: { id } });
+    if (!invoice) throw new Error("Invoice not found");
+
+    const canManage = await hasPermission(user.id, invoice.organizationId, "manage_invoices");
+    if (!canManage) throw new Error("Forbidden");
+
+    await prisma.invoice.update({
+      where: { id },
+      data: { isPinned: !invoice.isPinned },
+    });
+
+    revalidatePath("/invoices");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to toggle pin" };
+  }
+}
+
 export async function createInvoice(data: any) {
   const user = await getCurrentUser();
   if (!user) {

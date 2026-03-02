@@ -84,9 +84,10 @@ export default async function InvoicesPage(props: PageProps) {
     include: {
       client: true,
     },
-    orderBy: {
-      issuedAt: "desc",
-    },
+    orderBy: [
+        { isPinned: "desc" },
+        { issuedAt: "desc" }
+      ],
   });
 
   const getStatusBadge = (status: string, dueAt: Date) => {
@@ -213,7 +214,10 @@ export default async function InvoicesPage(props: PageProps) {
                     key={invoice.id}
                     className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                   >
-                    <td className="p-4 align-middle font-medium">{invoice.number}</td>
+                    <td className="p-4 align-middle font-medium flex items-center gap-2">
+                      <PinInvoiceButton id={invoice.id} isPinned={invoice.isPinned} />
+                      {invoice.number}
+                    </td>
                     <td className="p-4 align-middle">{invoice.client.name}</td>
                     <td className="p-4 align-middle">{formatDate(invoice.issuedAt)}</td>
                     <td className="p-4 align-middle">{formatDate(invoice.dueAt)}</td>

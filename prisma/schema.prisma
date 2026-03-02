@@ -21,6 +21,7 @@ model Organization {
   
   // Integrations
   cloudIntegrationGoogleDrive Boolean @default(false)
+  googleDriveCredentials      String? // JSON string
   cloudIntegrationDropbox     Boolean @default(false)
   cloudIntegrationOneDrive    Boolean @default(false)
   googleCalendarIntegration   Boolean @default(false)
@@ -88,9 +89,10 @@ model BankDetail {
   
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  isPinned       Boolean      @default(false)
 }
 
-// Phase 40: Contracts
+// Phase 2: Clients40: Contracts
 model Contract {
   id             String       @id @default(cuid())
   organizationId String
@@ -297,6 +299,7 @@ model Invoice {
   currency       String        @default("CZK")
   totalAmount    Float         @default(0)
   totalVat       Float         @default(0)
+  overpaymentAmount Float      @default(0)
   notes          String?
   bankDetailId   String?
   

@@ -3,12 +3,23 @@ export function formatCurrency(amount: number, currency: string = "CZK", options
   const numberFormat = options?.numberFormat || "SPACE_COMMA";
   
   const locale = numberFormat === "COMMA_DOT" ? "en-US" : "cs-CZ";
-
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: currency,
-    minimumFractionDigits: 2,
-  }).format(amount);
+  
+  // Normalize currency code
+  let safeCurrency = currency.toUpperCase().trim();
+  if (safeCurrency === "KČ") safeCurrency = "CZK";
+  if (safeCurrency === "€") safeCurrency = "EUR";
+  if (safeCurrency === "$") safeCurrency = "USD";
+  
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: safeCurrency,
+      minimumFractionDigits: 2,
+    }).format(amount);
+  } catch (e) {
+    // Fallback if currency code is invalid
+    return `${amount.toFixed(2)} ${currency}`;
+  }
 }
 
 export function formatDate(date: Date | string, options?: Intl.DateTimeFormatOptions, timezone?: string) {
