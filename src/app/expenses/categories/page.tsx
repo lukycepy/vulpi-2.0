@@ -20,12 +20,7 @@ export default async function CategoriesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="space-y-4">
             <h2 className="text-xl font-semibold">Nová kategorie</h2>
-            <form action={async (formData: FormData) => {
-                "use server";
-                const name = formData.get("name") as string;
-                const color = formData.get("color") as string;
-                await createCategory(name, color);
-            }} className="space-y-4 bg-card p-6 rounded-lg border shadow-sm">
+            <form action={createCategory} className="space-y-4 bg-card p-6 rounded-lg border shadow-sm">
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Název</label>
                     <input name="name" required className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Např. Kancelář" />

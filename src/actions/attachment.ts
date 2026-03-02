@@ -12,6 +12,9 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 export async function uploadAttachment(formData: FormData) {
   const user = await getCurrentUser();
+  if (!user) {
+    throw new Error("Nejste přihlášeni.");
+  }
   const file = formData.get("file") as File;
   const invoiceId = formData.get("invoiceId") as string;
 
@@ -64,10 +67,10 @@ export async function uploadAttachment(formData: FormData) {
   await prisma.attachment.create({
     data: {
       invoiceId,
-      fileName: file.name,
-      fileType: file.type,
-      fileUrl,
-      fileSize: file.size,
+      filename: file.name,
+      mimeType: file.type,
+      url: fileUrl,
+      size: file.size,
     },
   });
 
@@ -76,6 +79,9 @@ export async function uploadAttachment(formData: FormData) {
 
 export async function deleteAttachment(attachmentId: string) {
   const user = await getCurrentUser();
+  if (!user) {
+    throw new Error("Nejste přihlášeni.");
+  }
   const attachment = await prisma.attachment.findUnique({
     where: { id: attachmentId },
     include: { invoice: true },
@@ -97,8 +103,8 @@ export async function deleteAttachment(attachmentId: string) {
 
   // Delete file from disk
   // Construct absolute path from relative URL
-  // fileUrl: /uploads/attachments/filename.ext
-  const relativePath = attachment.fileUrl.startsWith("/") ? attachment.fileUrl.slice(1) : attachment.fileUrl;
+  // url: /uploads/attachments/filename.ext
+  const relativePath = attachment.url.startsWith("/") ? attachment.url.slice(1) : attachment.url;
   const absolutePath = join(process.cwd(), "public", relativePath);
 
   try {

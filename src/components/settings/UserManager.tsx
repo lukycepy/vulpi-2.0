@@ -21,7 +21,7 @@ import {
   TableRow 
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, UserPlus, Search } from "lucide-react";
+import { Trash2, UserPlus, Search, LogIn } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
@@ -114,8 +114,8 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
                 </TableCell>
                 <TableCell>
                   <Select 
-                    defaultValue={membership.roleDefId || undefined} 
-                    onValueChange={(val) => handleRoleChange(membership.id, val)}
+                    defaultValue={membership.roleDefinitionId || undefined} 
+                    onValueChange={(val: string) => handleRoleChange(membership.id, val)}
                     disabled={membership.userId === currentUserId} // Prevent changing own role (basic safety)
                   >
                     <SelectTrigger className="w-[180px]">

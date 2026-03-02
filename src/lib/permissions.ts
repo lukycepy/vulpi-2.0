@@ -14,11 +14,13 @@ export const PERMISSIONS = [
   { id: "manage_projects", label: "Správa projektů", description: "Projekty a zakázky" },
   { id: "manage_templates", label: "Správa šablon", description: "Vytvářet a upravovat šablony faktur" },
   { id: "manage_custom_fields", label: "Správa polí", description: "Definovat vlastní pole" },
+  { id: "can_export_data", label: "Export dat", description: "Možnost exportovat data do Excelu/CSV" },
 ];
 
 export const DEFAULT_ROLES = {
-  ADMIN: ["view_dashboard", "manage_invoices", "approve_invoices", "view_margins", "manage_inventory", "manage_users", "manage_roles", "manage_settings", "impersonate_users", "manage_bank", "manage_expenses", "manage_clients", "manage_projects", "manage_templates", "manage_custom_fields"],
-  MANAGER: ["view_dashboard", "manage_invoices", "approve_invoices", "view_margins", "manage_inventory", "manage_bank", "manage_expenses", "manage_clients", "manage_projects"],
+  SUPERADMIN: PERMISSIONS.map(p => p.id),
+  ADMIN: ["view_dashboard", "manage_invoices", "approve_invoices", "view_margins", "manage_inventory", "manage_users", "manage_roles", "manage_settings", "impersonate_users", "manage_bank", "manage_expenses", "manage_clients", "manage_projects", "manage_templates", "manage_custom_fields", "can_export_data"],
+  MANAGER: ["view_dashboard", "manage_invoices", "approve_invoices", "view_margins", "manage_inventory", "manage_bank", "manage_expenses", "manage_clients", "manage_projects", "can_export_data"],
   USER: ["view_dashboard", "manage_invoices", "manage_clients"],
   WAREHOUSEMAN: ["manage_inventory"],
   ACCOUNTANT: ["view_dashboard", "manage_invoices", "manage_bank", "manage_expenses", "manage_clients"],

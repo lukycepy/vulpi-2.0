@@ -10,7 +10,7 @@ interface TimerWidgetProps {
   activeEntry: {
     id: string;
     startTime: Date;
-    description: string;
+    description: string | null;
     project: {
       name: string;
       color: string | null;

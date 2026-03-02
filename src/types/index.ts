@@ -24,3 +24,22 @@ export enum Role {
   CLIENT = "CLIENT",
   WAREHOUSEMAN = "WAREHOUSEMAN",
 }
+
+export interface InvoiceTemplate {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  fontFamily: string | null;
+  customFontUrl?: string | null;
+  logoPosition: string | null;
+  showQrCode: boolean;
+  showSignature: boolean;
+  showBarcodes: boolean;
+  customCss?: string | null;
+  textOverrides?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}

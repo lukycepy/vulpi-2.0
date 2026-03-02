@@ -13,6 +13,7 @@ interface InvoicePreviewProps {
     showQrCode: boolean;
     showSignature: boolean;
     customCss?: string;
+    textOverrides?: string;
   };
   dummyData?: {
     organizationName: string;
@@ -51,6 +52,30 @@ export function InvoicePreview({ template, dummyData = {
     right: "justify-end",
   }[template.logoPosition] || "justify-start";
 
+  // Translations and Overrides
+  const defaultTexts = {
+    invoice: "Faktura",
+    taxDocument: "Daňový doklad",
+    subscriber: "Odběratel",
+    supplier: "Dodavatel",
+    dateOfIssue: "Datum vystavení:",
+    dueAt: "Datum splatnosti:",
+    variableSymbol: "Variabilní symbol:",
+    total: "CELKEM K ÚHRADĚ",
+    signature: "Razítko a podpis",
+    qrPayment: "QR Platba"
+  };
+
+  let t = { ...defaultTexts };
+  if (template.textOverrides) {
+    try {
+      const overrides = JSON.parse(template.textOverrides);
+      t = { ...t, ...overrides };
+    } catch (e) {
+      console.error("Failed to parse overrides in preview", e);
+    }
+  }
+
   return (
     <Card className="w-full h-full overflow-hidden border shadow-lg bg-white" style={containerStyle}>
       <CardContent className="p-8 h-full flex flex-col gap-6">
@@ -64,8 +89,8 @@ export function InvoicePreview({ template, dummyData = {
         
         <div className="flex justify-between items-start border-b pb-4" style={{ borderColor: template.secondaryColor }}>
           <div>
-            <h1 className="text-2xl font-bold mb-1" style={headerStyle}>Faktura {dummyData.invoiceNumber}</h1>
-            <p className="text-sm text-gray-500">Daňový doklad</p>
+            <h1 className="text-2xl font-bold mb-1" style={headerStyle}>{t.invoice} {dummyData.invoiceNumber}</h1>
+            <p className="text-sm text-gray-500">{t.taxDocument}</p>
           </div>
           <div className="text-right">
             <p className="font-semibold">{dummyData.organizationName}</p>
@@ -77,7 +102,7 @@ export function InvoicePreview({ template, dummyData = {
         {/* Client Info */}
         <div className="grid grid-cols-2 gap-8 py-4">
           <div>
-            <h3 className="text-sm font-semibold mb-2" style={secondaryStyle}>Odběratel</h3>
+            <h3 className="text-sm font-semibold mb-2" style={secondaryStyle}>{t.subscriber}</h3>
             <p className="font-bold">{dummyData.clientName}</p>
             <p className="text-sm text-gray-500">Ulice 123</p>
             <p className="text-sm text-gray-500">100 00 Praha 1</p>
@@ -85,15 +110,15 @@ export function InvoicePreview({ template, dummyData = {
           </div>
           <div className="text-right space-y-1">
             <div className="flex justify-between">
-              <span className="text-gray-500">Datum vystavení:</span>
+              <span className="text-gray-500">{t.dateOfIssue}</span>
               <span>{format(new Date(), "dd.MM.yyyy", { locale: cs })}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Datum splatnosti:</span>
+              <span className="text-gray-500">{t.dueAt}</span>
               <span className="font-semibold">{format(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), "dd.MM.yyyy", { locale: cs })}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Variabilní symbol:</span>
+              <span className="text-gray-500">{t.variableSymbol}</span>
               <span>2024001</span>
             </div>
           </div>
@@ -127,7 +152,7 @@ export function InvoicePreview({ template, dummyData = {
         <div className="flex justify-end pt-4 border-t" style={{ borderColor: template.primaryColor }}>
           <div className="w-1/2">
             <div className="flex justify-between text-lg font-bold" style={headerStyle}>
-              <span>Celkem k úhradě</span>
+              <span>{t.total}</span>
               <span>{dummyData.amount.toLocaleString("cs-CZ")} {dummyData.currency}</span>
             </div>
           </div>
@@ -137,15 +162,15 @@ export function InvoicePreview({ template, dummyData = {
         <div className="flex justify-between items-end mt-8 pt-8 border-t border-gray-100">
           {template.showQrCode && (
             <div className="flex flex-col items-center">
-              <div className="w-24 h-24 bg-gray-200 mb-1 flex items-center justify-center text-xs text-gray-400">QR Platba</div>
-              <span className="text-xs text-gray-500">QR Platba</span>
+              <div className="w-24 h-24 bg-gray-200 mb-1 flex items-center justify-center text-xs text-gray-400">QR</div>
+              <span className="text-xs text-gray-500">{t.qrPayment}</span>
             </div>
           )}
           
           {template.showSignature && (
             <div className="flex flex-col items-center">
                <div className="w-32 h-16 border-b border-dashed border-gray-400 mb-1"></div>
-               <span className="text-xs text-gray-500">Podpis a razítko</span>
+               <span className="text-xs text-gray-500">{t.signature}</span>
             </div>
           )}
         </div>

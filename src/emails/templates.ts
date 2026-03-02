@@ -65,9 +65,47 @@ export const getInvoiceEmailTemplate = (
 
     <p>Prosíme o úhradu do data splatnosti.</p>
     
-    ${downloadUrl ? `<div style="text-align: center;"><a href="${downloadUrl}" class="button">Stáhnout fakturu</a></div>` : ''}
+    ${downloadUrl ? `<div style="text-align: center;"><a href="${downloadUrl}" class="button" target="_blank">Stáhnout fakturu</a></div>` : ''}
     
     <p>S pozdravem,<br>Tým Vulpi</p>
+    ${trackingUrl ? `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />` : ''}
+  `;
+  return getBaseTemplate(content);
+};
+
+export const getAnniversaryEmailTemplate = (
+  clientName: string,
+  years: number,
+  trackingUrl?: string
+) => {
+  const content = `
+    <h2>Výročí naší spolupráce 🎉</h2>
+    <p>Vážený kliente ${clientName},</p>
+    <p>dnes je to přesně <strong>${years} ${years === 1 ? 'rok' : (years >= 2 && years <= 4 ? 'roky' : 'let')}</strong>, co jsme zahájili naši spolupráci.</p>
+    <p>Velmi si vážíme Vaší důvěry a těšíme se na další společné projekty.</p>
+    
+    <p>S pozdravem,<br>Tým Vulpi</p>
+    ${trackingUrl ? `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />` : ''}
+  `;
+  return getBaseTemplate(content);
+};
+
+export const getNewsletterEmailTemplate = (
+  clientName: string,
+  bodyContent: string,
+  trackingUrl?: string
+) => {
+  // Replace newlines with <br> if needed, but assuming bodyContent might be HTML or simple text
+  const formattedBody = bodyContent.replace(/\n/g, '<br>');
+  
+  const content = `
+    <p>Vážený kliente ${clientName},</p>
+    <div>${formattedBody}</div>
+    
+    <p>S pozdravem,<br>Tým Vulpi</p>
+    <div style="font-size: 10px; color: #ccc; margin-top: 20px;">
+      <p>Pokud si nepřejete dostávat tyto zprávy, kontaktujte nás.</p>
+    </div>
     ${trackingUrl ? `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />` : ''}
   `;
   return getBaseTemplate(content);
@@ -80,6 +118,7 @@ export const getReminderEmailTemplate = (
   dueDate: string,
   daysOverdue: number,
   variableSymbol: string,
+  downloadUrl?: string,
   trackingUrl?: string
 ) => {
   const isPreReminder = daysOverdue < 0;
@@ -118,6 +157,8 @@ export const getReminderEmailTemplate = (
 
     <p>Pokud jste platbu již odeslali, považujte prosím tuto zprávu za bezpředmětnou.</p>
     <p>Fakturu naleznete v příloze.</p>
+
+    ${downloadUrl ? `<div style="text-align: center;"><a href="${downloadUrl}" class="button" target="_blank">Zobrazit fakturu online</a></div>` : ''}
     
     <p>S pozdravem,<br>Tým Vulpi</p>
     ${trackingUrl ? `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />` : ''}

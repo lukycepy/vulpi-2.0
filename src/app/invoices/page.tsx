@@ -3,9 +3,13 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Plus, FileText, CheckCircle, AlertCircle, XCircle, Clock } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth-permissions";
+import { redirect } from "next/navigation";
 
 import { Search } from "@/components/ui/Search";
 import { InvoiceStatusFilter } from "@/components/invoices/InvoiceStatusFilter";
+import { BulkExportButton } from "@/components/invoices/BulkExportButton";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +21,47 @@ interface PageProps {
 }
 
 export default async function InvoicesPage(props: PageProps) {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const membership = await prisma.membership.findFirst({
+    where: { userId: user.id },
+    select: { organizationId: true, role: true }
+  });
+
+  if (!membership) {
+    return (
+      <div className="container mx-auto p-8">
+        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md">
+          Nemáte přiřazenou žádnou organizaci.
+        </div>
+      </div>
+    );
+  }
+
+  // Department Isolation
+  const currentUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { department: true }
+  });
+
   const searchParams = await props.searchParams;
   const query = searchParams.query || "";
   const status = searchParams.status || "ALL";
 
-  const where: any = {};
+  const where: any = {
+    organizationId: membership.organizationId
+  };
+
+  // If user has a department and is NOT Admin/Manager, filter by department
+  // Assuming roles: ADMIN, MANAGER see all. USER, ACCOUNTANT, etc. see only their department if set.
+  // Ideally, this logic should be in a centralized permission service or Policy.
+  // For now:
+  if (currentUser?.department && !["ADMIN", "MANAGER", "SUPERADMIN"].includes(membership.role)) {
+      where.department = currentUser.department;
+  }
 
   if (query) {
     where.OR = [
@@ -128,7 +168,7 @@ export default async function InvoicesPage(props: PageProps) {
         </div>
         <div className="flex gap-2">
           <InvoiceStatusFilter />
-          <BulkExportButton searchParams={searchParams} />
+          <BulkExportButton searchParams={searchParams} organizationId={membership.organizationId} />
         </div>
       </div>
 
@@ -149,8 +189,22 @@ export default async function InvoicesPage(props: PageProps) {
             <tbody className="[&_tr:last-child]:border-0">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                    Zatím nebyly vytvořeny žádné faktury.
+                  <td colSpan={7} className="p-0">
+                    <EmptyState 
+                      title="Žádné faktury"
+                      description={
+                        query || status !== "ALL" 
+                          ? "Pro zadané filtry nebyly nalezeny žádné faktury." 
+                          : "Zatím nebyly vytvořeny žádné faktury."
+                      }
+                      action={
+                        !(query || status !== "ALL") ? {
+                          label: "Vytvořit první fakturu",
+                          href: "/invoices/new"
+                        } : undefined
+                      }
+                      className="border-0 bg-transparent"
+                    />
                   </td>
                 </tr>
               ) : (
@@ -165,9 +219,9 @@ export default async function InvoicesPage(props: PageProps) {
                     <td className="p-4 align-middle">{formatDate(invoice.dueAt)}</td>
                     <td className="p-4 align-middle text-right font-medium">
                       {formatCurrency(invoice.totalAmount, invoice.currency)}
-                      {invoice.status === "PARTIAL" && invoice.paidAmount > 0 && (
+                      {invoice.status === "PARTIAL" && (invoice.paidAmount ?? 0) > 0 && (
                         <div className="text-xs text-orange-600">
-                          Zbývá: {formatCurrency(invoice.totalAmount - invoice.paidAmount, invoice.currency)}
+                          Zbývá: {formatCurrency(invoice.totalAmount - (invoice.paidAmount ?? 0), invoice.currency)}
                         </div>
                       )}
                     </td>

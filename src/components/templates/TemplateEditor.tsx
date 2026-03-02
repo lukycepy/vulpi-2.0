@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { InvoiceTemplate } from "@prisma/client";
-import { createInvoiceTemplate, updateInvoiceTemplate } from "@/actions/templates";
+import { InvoiceTemplate } from "@/types";
+import { createInvoiceTemplate, updateInvoiceTemplate, sendTestEmail } from "@/actions/templates";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { InvoicePreview } from "./InvoicePreview";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 
 const templateSchema = z.object({
   name: z.string().min(1, "Název je povinný"),
@@ -27,8 +27,10 @@ const templateSchema = z.object({
   logoPosition: z.enum(["left", "center", "right"]),
   showQrCode: z.boolean(),
   showSignature: z.boolean(),
+  showBarcodes: z.boolean(),
   customCss: z.string().optional(),
   customFontUrl: z.string().optional(),
+  textOverrides: z.string().optional(),
 });
 
 type TemplateFormValues = z.infer<typeof templateSchema>;
@@ -61,14 +63,33 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
     logoPosition: (template?.logoPosition as "left" | "center" | "right") || "left",
     showQrCode: template?.showQrCode ?? true,
     showSignature: template?.showSignature ?? true,
+    showBarcodes: template?.showBarcodes ?? false,
     customCss: template?.customCss || "",
     customFontUrl: template?.customFontUrl || "",
+    textOverrides: template?.textOverrides || "{}",
   };
 
   const form = useForm<TemplateFormValues>({
     resolver: zodResolver(templateSchema),
     defaultValues,
   });
+
+  const [overrides, setOverrides] = useState<Record<string, string>>(() => {
+    try {
+      return defaultValues.textOverrides ? JSON.parse(defaultValues.textOverrides) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const updateOverride = (key: string, value: string) => {
+    const newOverrides = { ...overrides, [key]: value };
+    // Remove empty keys
+    if (!value) delete newOverrides[key];
+    
+    setOverrides(newOverrides);
+    form.setValue("textOverrides", JSON.stringify(newOverrides), { shouldDirty: true });
+  };
 
   const watchAllFields = form.watch();
 
@@ -89,6 +110,18 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
       router.refresh();
     } catch (error) {
       toast({ title: "Chyba", description: "Nepodařilo se uložit šablonu.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    setLoading(true);
+    try {
+      await sendTestEmail(organizationId);
+      toast({ title: "Odesláno", description: "Testovací e-mail byl odeslán na vaši adresu." });
+    } catch (error) {
+      toast({ title: "Chyba", description: "Nepodařilo se odeslat testovací e-mail.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -132,8 +165,9 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
               </div>
 
               <Tabs defaultValue="design">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="design">Vzhled</TabsTrigger>
+                  <TabsTrigger value="texts">Texty</TabsTrigger>
                   <TabsTrigger value="advanced">Pokročilé</TabsTrigger>
                 </TabsList>
                 
@@ -260,6 +294,71 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
                       onCheckedChange={(checked) => form.setValue("showSignature", checked)}
                     />
                   </div>
+
+                   <div className="flex items-center justify-between space-x-2 border p-3 rounded-md">
+                    <Label htmlFor="showBarcodes" className="flex flex-col space-y-1">
+                      <span>Zobrazit čárové kódy (EAN/SKU)</span>
+                      <span className="font-normal text-xs text-muted-foreground">Přidá sloupec SKU a vyrenderuje čárový kód pod názvem položky.</span>
+                    </Label>
+                    <Switch
+                      id="showBarcodes"
+                      checked={watchAllFields.showBarcodes}
+                      onCheckedChange={(checked) => form.setValue("showBarcodes", checked)}
+                    />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="texts" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-2">
+                          <Label htmlFor="override-title">Nadpis faktury</Label>
+                          <Input 
+                              id="override-title" 
+                              placeholder="Faktura" 
+                              value={overrides.invoice || ""} 
+                              onChange={(e) => updateOverride("invoice", e.target.value)} 
+                          />
+                           <p className="text-xs text-muted-foreground">Přepíše "Faktura". Např. "Daňový doklad", "Vyúčtování"</p>
+                      </div>
+                      <div className="space-y-2">
+                          <Label htmlFor="override-dueDate">Datum splatnosti</Label>
+                          <Input 
+                              id="override-dueDate" 
+                              placeholder="Datum splatnosti" 
+                              value={overrides.dueAt || ""} 
+                              onChange={(e) => updateOverride("dueAt", e.target.value)} 
+                          />
+                          <p className="text-xs text-muted-foreground">Přepíše "Datum splatnosti". Např. "Uhradit do", "Splatnost"</p>
+                      </div>
+                      <div className="space-y-2">
+                          <Label htmlFor="override-total">Celkem</Label>
+                          <Input 
+                              id="override-total" 
+                              placeholder="Celkem" 
+                              value={overrides.total || ""} 
+                              onChange={(e) => updateOverride("total", e.target.value)} 
+                          />
+                          <p className="text-xs text-muted-foreground">Přepíše "Celkem". Např. "K úhradě", "Suma"</p>
+                      </div>
+                       <div className="space-y-2">
+                          <Label htmlFor="override-supplier">Dodavatel</Label>
+                          <Input 
+                              id="override-supplier" 
+                              placeholder="Dodavatel" 
+                              value={overrides.supplier || ""} 
+                              onChange={(e) => updateOverride("supplier", e.target.value)} 
+                          />
+                      </div>
+                       <div className="space-y-2">
+                          <Label htmlFor="override-customer">Odběratel</Label>
+                          <Input 
+                              id="override-customer" 
+                              placeholder="Odběratel" 
+                              value={overrides.subscriber || ""} 
+                              onChange={(e) => updateOverride("subscriber", e.target.value)} 
+                          />
+                      </div>
+                  </div>
                 </TabsContent>
                 
                 <TabsContent value="advanced" className="space-y-4 mt-4">
@@ -281,6 +380,10 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
             </div>
 
             <div className="flex justify-end gap-4">
+              <Button type="button" variant="secondary" onClick={handleSendTestEmail} disabled={loading}>
+                <Mail className="mr-2 h-4 w-4" />
+                Odeslat testovací e-mail
+              </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Zrušit
               </Button>

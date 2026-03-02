@@ -11,6 +11,7 @@ export default async function ExpensesPage() {
 
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id },
+    include: { organization: true }
   });
 
   if (!membership) {
@@ -18,6 +19,7 @@ export default async function ExpensesPage() {
   }
   
   const orgId = membership.organizationId;
+  const isLegalHold = membership.organization.isLegalHold;
   const canManageExpenses = await hasPermission(user.id, orgId, "manage_expenses");
 
   if (!canManageExpenses) {
@@ -94,7 +96,7 @@ export default async function ExpensesPage() {
                       {expense.category ? (
                         <span 
                           className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
-                          style={{ backgroundColor: expense.category.color + '20', color: expense.category.color }}
+                          style={{ backgroundColor: (expense.category.color || '#000000') + '20', color: expense.category.color || '#000000' }}
                         >
                           {expense.category.name}
                         </span>
@@ -104,14 +106,20 @@ export default async function ExpensesPage() {
                       {formatCurrency(expense.amount, expense.currency)}
                     </td>
                     <td className="p-4 align-middle text-right">
-                      <form action={async () => {
-                        "use server";
-                        await deleteExpense(expense.id);
-                      }}>
-                        <button className="text-red-500 hover:text-red-700">
+                      {isLegalHold ? (
+                        <button className="text-gray-400 cursor-not-allowed" disabled title="Nelze smazat - aktivní Legal Hold">
                           <Trash2 className="w-4 h-4" />
                         </button>
-                      </form>
+                      ) : (
+                        <form action={async () => {
+                          "use server";
+                          await deleteExpense(expense.id);
+                        }}>
+                          <button className="text-red-500 hover:text-red-700">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </form>
+                      )}
                     </td>
                   </tr>
                 ))

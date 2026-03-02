@@ -42,7 +42,7 @@ export default function CashflowChart({ data }: CashflowChartProps) {
             tickFormatter={(value) => `${value / 1000}k`}
           />
           <Tooltip 
-            formatter={(value: number) => formatCurrency(value)}
+            formatter={(value: any) => formatCurrency(Number(value || 0))}
             contentStyle={{ backgroundColor: "#fff", borderRadius: "8px", border: "1px solid #e2e8f0" }}
           />
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />

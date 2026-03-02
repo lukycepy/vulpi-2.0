@@ -69,7 +69,10 @@ export default async function BankingPage() {
           </p>
         </div>
         <div className="flex gap-2">
-            <form action={runBankMatching}>
+            <form action={async () => {
+              "use server";
+              await runBankMatching();
+            }}>
                 <Button type="submit">
                     <RefreshCw className="mr-2 h-4 w-4" />
                     Spustit párování

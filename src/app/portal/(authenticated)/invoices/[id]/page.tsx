@@ -4,6 +4,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { generateSPDCString, generateQRCode } from "@/lib/qr";
 import { DownloadPDFButton } from "@/components/invoices/DownloadPDFButton";
 import DisputeForm from "@/components/portal/DisputeForm";
+import PaymentButton from "@/components/portal/PaymentButton";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Building2, Calendar, FileText } from "lucide-react";
@@ -20,6 +21,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       client: true,
       organization: true,
       bankDetail: true,
+      template: true,
     },
   });
 
@@ -32,11 +34,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   if (invoice.status !== "PAID" && invoice.status !== "CANCELLED" && invoice.bankDetail) {
     const spdString = generateSPDCString({
       iban: invoice.bankDetail.iban || "",
-      amount: invoice.totalAmount - invoice.paidAmount,
+      amount: invoice.totalAmount - (invoice.paidAmount ?? 0),
       currency: invoice.currency,
       variableSymbol: invoice.variableSymbol || invoice.number,
       message: `Faktura ${invoice.number}`,
-      date: invoice.dueAt
     });
     qrCodeUrl = await generateQRCode(spdString);
   }
@@ -79,6 +80,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </div>
           
           <div className="flex flex-col gap-3 items-end">
+             {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
+                <PaymentButton 
+                  invoiceId={invoice.id} 
+                  amount={invoice.totalAmount} 
+                  currency={invoice.currency} 
+                />
+             )}
              <DownloadPDFButton invoice={invoice} qrCodeUrl={qrCodeUrl} />
              <DisputeForm invoiceId={invoice.id} />
           </div>
@@ -138,12 +146,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {invoice.items.map((item) => (
+              {invoice.items.map((item: any) => (
                 <tr key={item.id}>
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{item.description}</td>
                   <td className="px-6 py-4 text-right">{item.quantity} {item.unit}</td>
                   <td className="px-6 py-4 text-right">{formatCurrency(item.unitPrice)}</td>
-                  <td className="px-6 py-4 text-right font-medium">{formatCurrency(item.totalPrice)}</td>
+                  <td className="px-6 py-4 text-right font-medium">{formatCurrency(item.totalAmount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -172,7 +180,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
                    <div>
                      <span className="text-gray-500 block">Číslo účtu</span>
-                     <span className="font-mono font-medium">{invoice.bankDetail?.accountNumber}/{invoice.bankDetail?.bankName}</span>
+                     <span className="font-mono font-medium">{invoice.bankDetail?.accountNumber}</span>
                    </div>
                    <div>
                      <span className="text-gray-500 block">IBAN</span>

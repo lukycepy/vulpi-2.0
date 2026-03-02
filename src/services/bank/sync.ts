@@ -40,12 +40,12 @@ export async function syncBankMovements(orgId?: string) {
 
       const existing = await prisma.bankMovement.findMany({
         where: {
-          bankIntegrationId: integration.id,
+          integrationId: integration.id,
           date: { gte: dateFrom, lte: dateTo },
         },
         select: { transactionId: true },
       });
-      const existingIds = new Set(existing.map((m) => m.transactionId));
+      const existingIds = new Set(existing.map((m: any) => m.transactionId));
 
       let imported = 0;
       for (const movement of fetched) {
@@ -54,7 +54,7 @@ export async function syncBankMovements(orgId?: string) {
 
         await prisma.bankMovement.create({
           data: {
-            bankIntegrationId: integration.id,
+            integrationId: integration.id,
             transactionId: movement.transactionId,
             amount: movement.amount ?? 0,
             currency: movement.currency ?? "CZK",

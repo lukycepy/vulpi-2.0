@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2, FileJson } from "lucide-react";
+import { Download, Loader2, FileJson, FileSpreadsheet } from "lucide-react";
 import { exportFilteredInvoices } from "@/actions/exports";
 import {
   DropdownMenu,
@@ -15,27 +15,49 @@ interface BulkExportButtonProps {
     query?: string;
     status?: string;
   };
+  organizationId: string;
 }
 
-export function BulkExportButton({ searchParams }: BulkExportButtonProps) {
+export function BulkExportButton({ searchParams, organizationId }: BulkExportButtonProps) {
   const [loading, setLoading] = useState<string | null>(null);
 
-  const handleExport = async (format: "ISDOC" | "POHODA" | "MONEY") => {
+  const handleExport = async (format: "ISDOC" | "POHODA" | "MONEY" | "XLSX") => {
     try {
       setLoading(format);
       
-      const { content, filename } = await exportFilteredInvoices(searchParams, format);
+      const { content, filename } = await exportFilteredInvoices(organizationId, searchParams, format);
       
-      // Create blob and download
-      const blob = new Blob([content], { type: "application/xml" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      if (format === "XLSX") {
+        // Handle Base64 for XLSX
+        const byteCharacters = atob(content);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        // Handle Text/XML
+        const blob = new Blob([content], { type: "application/xml" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+
     } catch (error) {
       console.error("Export failed:", error);
       alert(error instanceof Error ? error.message : "Export se nezdařil");
@@ -60,6 +82,10 @@ export function BulkExportButton({ searchParams }: BulkExportButtonProps) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => handleExport("XLSX")} disabled={!!loading}>
+          <FileSpreadsheet className="mr-2 h-4 w-4" />
+          <span>Excel (XLSX)</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleExport("POHODA")} disabled={!!loading}>
           <FileJson className="mr-2 h-4 w-4" />
           <span>Pohoda (XML)</span>

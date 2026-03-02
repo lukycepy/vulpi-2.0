@@ -34,7 +34,7 @@ export default function ClientShareChart({ data }: ClientShareChartProps) {
             ))}
           </Pie>
           <Tooltip 
-            formatter={(value: number) => formatCurrency(value)}
+            formatter={(value: any) => formatCurrency(Number(value))}
             contentStyle={{ backgroundColor: "#fff", borderRadius: "8px", border: "1px solid #e2e8f0" }}
           />
           <Legend />

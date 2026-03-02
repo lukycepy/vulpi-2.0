@@ -100,17 +100,17 @@ export function AttachmentManager({ invoiceId, isLocked, attachments }: Attachme
               <div className="flex items-center gap-3 overflow-hidden">
                 <FileText className="w-8 h-8 text-blue-500 flex-shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate" title={attachment.fileName}>
-                    {attachment.fileName}
+                  <p className="text-sm font-medium truncate" title={attachment.filename}>
+                    {attachment.filename}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatBytes(attachment.fileSize)} • {formatDate(attachment.createdAt)}
+                    {formatBytes(attachment.size)} • {formatDate(attachment.createdAt)}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                 <a
-                  href={attachment.fileUrl}
+                  href={attachment.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"

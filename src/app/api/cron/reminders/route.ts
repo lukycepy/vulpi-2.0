@@ -77,7 +77,7 @@ export async function GET() {
         where: {
             invoiceId: invoice.id,
             body: { contains: `Overdue: ${diffDays} days` },
-            sentAt: {
+            createdAt: {
                 gte: today
             }
         }

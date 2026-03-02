@@ -4,10 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { generateISDOC } from "@/lib/exports/isdoc";
 import { generatePohoda, generatePohodaBatch } from "@/lib/exports/pohoda";
 import { generateMoneyS3, generateMoneyS3Batch } from "@/lib/exports/money";
+import { generateExcel } from "@/lib/exports/excel";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 
 export async function exportInvoice(invoiceId: string, format: "ISDOC" | "POHODA" | "MONEY") {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
 
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
@@ -31,6 +33,12 @@ export async function exportInvoice(invoiceId: string, format: "ISDOC" | "POHODA
 
   if (!membership) {
     throw new Error("Nemáte přístup k této faktuře.");
+  }
+
+  // Export Restriction
+  const canExport = await hasPermission(user.id, invoice.organizationId, "can_export_data");
+  if (!canExport) {
+    throw new Error("Nemáte oprávnění exportovat data.");
   }
 
   let content = "";
@@ -57,9 +65,10 @@ export async function exportInvoice(invoiceId: string, format: "ISDOC" | "POHODA
 export async function exportFilteredInvoices(
   organizationId: string,
   searchParams: { query?: string; status?: string },
-  format: "ISDOC" | "POHODA" | "MONEY"
+  format: "ISDOC" | "POHODA" | "MONEY" | "XLSX"
 ) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
   
   // Check access to organization
   const membership = await prisma.membership.findFirst({
@@ -68,6 +77,12 @@ export async function exportFilteredInvoices(
 
   if (!membership) {
     throw new Error("Nemáte přístup k této organizaci.");
+  }
+
+  // Export Restriction
+  const canExport = await hasPermission(user.id, organizationId, "can_export_data");
+  if (!canExport) {
+    throw new Error("Nemáte oprávnění exportovat data.");
   }
 
   const query = searchParams.query || "";
@@ -128,6 +143,11 @@ export async function exportFilteredInvoices(
     case "MONEY":
       content = generateMoneyS3Batch(invoices);
       filename = `export-faktur-money-${new Date().toISOString().split('T')[0]}.xml`;
+      break;
+
+    case "XLSX":
+      content = generateExcel(invoices);
+      filename = `export-faktury-${organizationId}.xlsx`;
       break;
   }
 

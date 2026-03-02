@@ -7,7 +7,7 @@ import { MapPin, Plus } from "lucide-react";
 interface Vehicle {
   id: string;
   name: string;
-  plate: string;
+  licensePlate: string;
 }
 
 export default function VehicleLogForm({ vehicles }: { vehicles: Vehicle[] }) {
@@ -55,7 +55,7 @@ export default function VehicleLogForm({ vehicles }: { vehicles: Vehicle[] }) {
               <option value="">-- Vyberte vozidlo --</option>
               {vehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.name} ({vehicle.plate})
+                  {vehicle.name} ({vehicle.licensePlate})
                 </option>
               ))}
             </select>

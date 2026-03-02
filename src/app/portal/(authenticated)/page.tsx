@@ -1,5 +1,6 @@
 import { getClientInvoices, getClientFromToken } from "@/actions/portal";
 import InvoiceList from "@/components/portal/InvoiceList";
+import DownloadAllButton from "@/components/portal/DownloadAllButton";
 import { formatCurrency } from "@/lib/format";
 import { redirect } from "next/navigation";
 import { AlertTriangle, Archive, FileText } from "lucide-react";
@@ -11,7 +12,7 @@ export default async function PortalDashboard() {
   const invoices = await getClientInvoices(client.id);
   const unpaidInvoices = invoices.filter(inv => inv.status !== "PAID" && inv.status !== "CANCELLED");
   
-  const totalUnpaid = unpaidInvoices.reduce((acc, inv) => acc + (inv.totalAmount - inv.paidAmount), 0);
+  const totalUnpaid = unpaidInvoices.reduce((acc, inv) => acc + (inv.totalAmount - (inv.paidAmount ?? 0)), 0);
 
   return (
     <div className="space-y-8">
@@ -21,6 +22,9 @@ export default async function PortalDashboard() {
           <p className="text-gray-500 dark:text-gray-400">
             Vítejte ve své klientské zóně, {client.name}.
           </p>
+          <div className="mt-4">
+             <DownloadAllButton invoices={invoices} />
+          </div>
         </div>
         
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex items-center gap-6">

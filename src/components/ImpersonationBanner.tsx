@@ -3,8 +3,9 @@ import { stopImpersonation } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, XCircle } from "lucide-react";
 
-export function ImpersonationBanner() {
-  const isImpersonating = cookies().has("impersonated_user_id");
+export async function ImpersonationBanner() {
+  const cookieStore = await cookies();
+  const isImpersonating = cookieStore.has("impersonated_user_id");
 
   if (!isImpersonating) return null;
 

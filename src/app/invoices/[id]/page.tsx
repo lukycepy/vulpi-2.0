@@ -3,24 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { generateSPDCString, generateQRCode } from "@/lib/qr";
 import Link from "next/link";
-import { ArrowLeft, Building2, User, CreditCard, Calendar, FileText } from "lucide-react";
+import { ArrowLeft, Building2, User, CreditCard, Calendar, FileText, Package, Printer } from "lucide-react";
 import { notFound } from "next/navigation";
-import dynamic from "next/dynamic";
 
 import { InvoiceActions } from "@/components/invoices/InvoiceActions";
 import { AttachmentManager } from "@/components/invoices/AttachmentManager";
 import { ExportButton } from "@/components/invoices/ExportButton";
 
-// Dynamically import DownloadPDFButton to avoid SSR issues with @react-pdf/renderer
-const DownloadPDFButtonClient = dynamic(
-  () => import("@/components/invoices/DownloadPDFButton").then((mod) => mod.DownloadPDFButton),
-  { ssr: false }
-);
-
-const DownloadTimeSheetButtonClient = dynamic(
-  () => import("@/components/invoices/DownloadTimeSheetButton").then((mod) => mod.DownloadTimeSheetButton),
-  { ssr: false }
-);
+import { DownloadPDFButtonClient, DownloadTimeSheetButtonClient } from "@/components/invoices/ClientDownloadButtons";
+import { CopyButton } from "@/components/ui/CopyButton";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -38,6 +29,7 @@ export default async function InvoiceDetailPage(props: PageProps) {
       items: true,
       bankDetail: true,
       attachments: true,
+      template: true,
       project: {
         include: {
           timeEntries: {
@@ -91,6 +83,8 @@ export default async function InvoiceDetailPage(props: PageProps) {
   const isOverdue = new Date() > new Date(invoice.dueAt) && invoice.status !== "PAID" && invoice.status !== "CANCELLED";
   const status = isOverdue ? "OVERDUE" : (invoice.status as keyof typeof statusLabels);
 
+  const totalWeight = invoice.items.reduce((sum, item) => sum + ((item.weightKg || 0) * item.quantity), 0);
+
   return (
     <div className="container mx-auto p-8 space-y-8">
       <div className="flex items-center justify-between">
@@ -124,13 +118,21 @@ export default async function InvoiceDetailPage(props: PageProps) {
             />
           )}
           <ExportButton invoiceId={invoice.id} />
+          <Link 
+            href={`/api/invoices/${invoice.id}/label`} 
+            target="_blank"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+          >
+            <Printer className="w-4 h-4 mr-2" />
+            Štítek
+          </Link>
           <DownloadPDFButtonClient invoice={invoice} qrCodeUrl={qrCodeUrl} />
           <InvoiceActions invoice={{
             id: invoice.id,
             status: invoice.status,
             isLocked: invoice.isLocked,
             type: invoice.type
-          }} />
+          }} isLegalHold={invoice.organization.isLegalHold} />
         </div>
       </div>
           
@@ -138,6 +140,13 @@ export default async function InvoiceDetailPage(props: PageProps) {
             <Link href={`/invoices/new?from=${invoice.id}&mode=credit_note`} className="px-4 py-2 border border-red-200 text-red-700 rounded hover:bg-red-50 text-sm flex items-center">
               Vytvořit dobropis
             </Link>
+          )}
+          
+          {invoice.type === 'NABIDKA' && (
+             <Link href={`/invoices/new?from=${invoice.id}&mode=convert`} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm flex items-center shadow-sm">
+               <FileText className="w-4 h-4 mr-2" />
+               Převést na fakturu
+             </Link>
           )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -151,8 +160,16 @@ export default async function InvoiceDetailPage(props: PageProps) {
             <p className="font-medium">{invoice.organization.name}</p>
             <p className="text-sm text-muted-foreground">{invoice.organization.address}</p>
             <div className="pt-2 text-sm">
-              <p>IČ: {invoice.organization.taxId}</p>
-              {invoice.organization.vatId && <p>DIČ: {invoice.organization.vatId}</p>}
+              <div className="flex items-center gap-2">
+                <p>IČ: {invoice.organization.taxId}</p>
+                <CopyButton value={invoice.organization.taxId || ""} className="h-4 w-4" />
+              </div>
+              {invoice.organization.vatId && (
+                <div className="flex items-center gap-2">
+                  <p>DIČ: {invoice.organization.vatId}</p>
+                  <CopyButton value={invoice.organization.vatId} className="h-4 w-4" />
+                </div>
+              )}
             </div>
           </div>
           
@@ -162,9 +179,17 @@ export default async function InvoiceDetailPage(props: PageProps) {
                 <CreditCard className="w-4 h-4 text-muted-foreground" />
                 <h3 className="font-medium text-sm">Bankovní spojení</h3>
               </div>
-              <p className="text-sm">{invoice.bankDetail.accountNumber}/{invoice.bankDetail.bankCode}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm">{invoice.bankDetail.accountNumber}</p>
+                <CopyButton value={invoice.bankDetail.accountNumber} className="h-4 w-4" />
+              </div>
               <p className="text-sm text-muted-foreground">{invoice.bankDetail.bankName}</p>
-              {invoice.bankDetail.iban && <p className="text-sm text-muted-foreground">IBAN: {invoice.bankDetail.iban}</p>}
+              {invoice.bankDetail.iban && (
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground">IBAN: {invoice.bankDetail.iban}</p>
+                  <CopyButton value={invoice.bankDetail.iban} className="h-4 w-4" />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -179,8 +204,18 @@ export default async function InvoiceDetailPage(props: PageProps) {
             <p className="font-medium">{invoice.client.name}</p>
             <p className="text-sm text-muted-foreground">{invoice.client.address}</p>
             <div className="pt-2 text-sm">
-              {invoice.client.taxId && <p>IČ: {invoice.client.taxId}</p>}
-              {invoice.client.vatId && <p>DIČ: {invoice.client.vatId}</p>}
+              {invoice.client.taxId && (
+                <div className="flex items-center gap-2">
+                  <p>IČ: {invoice.client.taxId}</p>
+                  <CopyButton value={invoice.client.taxId} className="h-4 w-4" />
+                </div>
+              )}
+              {invoice.client.vatId && (
+                <div className="flex items-center gap-2">
+                  <p>DIČ: {invoice.client.vatId}</p>
+                  <CopyButton value={invoice.client.vatId} className="h-4 w-4" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -195,10 +230,32 @@ export default async function InvoiceDetailPage(props: PageProps) {
              </div>
              <div className="flex justify-between text-sm">
                <span className="text-muted-foreground">Variabilní symbol:</span>
-               <span>{invoice.variableSymbol || "-"}</span>
+               <div className="flex items-center gap-2">
+                 <span>{invoice.variableSymbol || "-"}</span>
+                 {invoice.variableSymbol && <CopyButton value={invoice.variableSymbol} className="h-4 w-4" />}
+               </div>
              </div>
           </div>
         </div>
+
+        {/* Logistics Widget */}
+        {totalWeight > 0 && (
+          <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-6 space-y-4">
+            <div className="flex items-center space-x-2 border-b pb-4">
+              <Package className="w-5 h-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Logistika</h2>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Celková hmotnost:</span>
+                <span className="font-bold text-lg">{totalWeight.toFixed(2)} kg</span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-2">
+                Hmotnost je vypočítána ze součtu hmotností položek.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Items */}

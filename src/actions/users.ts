@@ -30,6 +30,8 @@ export async function getOrganizationUsers(organizationId: string) {
 
 export async function updateUserRole(membershipId: string, roleDefId: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const membership = await prisma.membership.findUnique({
     where: { id: membershipId },
   });
@@ -61,7 +63,7 @@ export async function updateUserRole(membershipId: string, roleDefId: string) {
   await prisma.membership.update({
     where: { id: membershipId },
     data: {
-      roleDefId: roleDefId,
+      roleDefId: roleDefId, // Fixed from roleDefinitionId to roleDefId
       // @ts-ignore - Prisma might complain if the string doesn't match the enum perfectly in types yet, but it should work if names match
       role: legacyRole, 
     },
@@ -72,6 +74,8 @@ export async function updateUserRole(membershipId: string, roleDefId: string) {
 
 export async function removeUserFromOrganization(membershipId: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const membership = await prisma.membership.findUnique({
     where: { id: membershipId },
   });

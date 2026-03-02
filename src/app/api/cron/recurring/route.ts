@@ -77,7 +77,7 @@ export async function GET() {
         });
 
         // Update Recurring Template
-        const interval = parser.parseExpression(template.cronExpression, { currentDate: now });
+        const interval = parser.parse(template.cronExpression, { currentDate: now });
         const nextRun = interval.next().toDate();
 
         await prisma.recurringInvoice.update({

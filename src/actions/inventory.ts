@@ -6,6 +6,8 @@ import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 
 export async function createProduct(formData: FormData) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id }
   });
@@ -43,6 +45,7 @@ export async function createProduct(formData: FormData) {
         sku: sku || null,
         ean: ean || null,
         unit: unit || "ks",
+        // price: sellPrice, // Removed: price doesn't exist in schema, sellPrice is used
         buyPrice: isNaN(buyPrice) ? 0 : buyPrice,
         sellPrice: isNaN(sellPrice) ? 0 : sellPrice,
         minStockLevel: isNaN(minStockLevel) ? 0 : minStockLevel,
@@ -67,6 +70,8 @@ export async function createProduct(formData: FormData) {
 
 export async function createStockMovement(formData: FormData) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id }
   });
@@ -83,6 +88,8 @@ export async function createStockMovement(formData: FormData) {
   const type = formData.get("type") as string; // "IN" | "OUT"
   const quantity = parseFloat(formData.get("quantity") as string);
   const note = formData.get("note") as string;
+  const expirationDateStr = formData.get("expirationDate") as string;
+  const serialNumber = formData.get("serialNumber") as string;
 
   if (isNaN(quantity) || quantity <= 0) {
     throw new Error("Invalid quantity");
@@ -90,7 +97,10 @@ export async function createStockMovement(formData: FormData) {
 
   // Transaction to ensure stock is updated correctly
   await prisma.$transaction(async (tx) => {
-    const product = await tx.product.findUnique({ where: { id: productId } });
+    // Use raw SQL to get product to ensure we bypass any schema caching issues
+    const products = await tx.$queryRaw<any[]>`SELECT * FROM "Product" WHERE "id" = ${productId}`;
+    const product = products[0];
+
     if (!product) throw new Error("Product not found");
 
     if (product.organizationId !== orgId) {
@@ -106,22 +116,23 @@ export async function createStockMovement(formData: FormData) {
       throw new Error("Nedostatek zboží na skladě");
     }
 
-    await tx.product.update({
-      where: { id: productId },
-      data: { stockQuantity: newStock }
-    });
+    // Update product stock
+    await tx.$executeRaw`UPDATE "Product" SET "stockQuantity" = ${newStock} WHERE "id" = ${productId}`;
 
-    await tx.stockMovement.create({
-      data: {
-        productId: productId,
-        type: type as "IN" | "OUT",
-        quantity: quantity,
-        note: note || null,
-      }
-    });
+    // Create movement with new fields using Raw SQL
+    const id = "sm_" + Math.random().toString(36).substr(2, 9);
+    const expirationDate = expirationDateStr ? new Date(expirationDateStr).toISOString() : null;
+    const sn = serialNumber || null;
+    const now = new Date().toISOString();
+
+    await tx.$executeRaw`
+      INSERT INTO "StockMovement" ("id", "productId", "type", "quantity", "date", "note", "expirationDate", "serialNumber", "createdAt")
+      VALUES (${id}, ${productId}, ${type}, ${quantity}, ${now}, ${note || null}, ${expirationDate}, ${sn}, ${now})
+    `;
   });
 
   revalidatePath("/inventory");
+  revalidatePath(`/inventory/products/${productId}`);
 }
 
 export async function createVehicle(formData: FormData) {
@@ -148,8 +159,9 @@ export async function createVehicle(formData: FormData) {
     data: {
       organizationId: orgId,
       name,
-      plate,
-      fuelType: fuelType || null,
+      plate: plate,
+      // brand: null, // Removed: doesn't exist in schema
+      // model: null, // Removed: doesn't exist in schema
     }
   });
 
@@ -190,8 +202,8 @@ export async function createVehicleLog(formData: FormData) {
     data: {
       vehicleId,
       date,
-      startKm,
-      endKm,
+      startKm: startKm,
+      endKm: endKm,
       distance,
       purpose: purpose || null,
       from,

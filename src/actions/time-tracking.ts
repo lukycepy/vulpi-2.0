@@ -36,6 +36,7 @@ export async function stopRunningTimer(userId: string) {
 
 export async function startTimeEntry(projectId: string | null, description: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
   
   // Get user's organization from membership
   // We assume the user is active in one organization context. 
@@ -67,6 +68,7 @@ export async function startTimeEntry(projectId: string | null, description: stri
 
 export async function stopTimer() {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
   
   await stopRunningTimer(user.id);
   revalidatePath("/time-tracking");
@@ -74,6 +76,7 @@ export async function stopTimer() {
 
 export async function createManualTimeEntry(formData: FormData) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
   
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id }

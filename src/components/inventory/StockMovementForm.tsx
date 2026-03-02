@@ -101,9 +101,37 @@ export default function StockMovementForm({ products }: { products: Product[] })
               </span>
             </div>
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="serialNumber" className="block text-sm font-medium mb-1">
+              Sériové číslo (volitelné)
+            </label>
+            <input
+              type="text"
+              name="serialNumber"
+              id="serialNumber"
+              className="w-full p-2 border rounded-md bg-background"
+              placeholder="Např. SN123456"
+            />
+          </div>
           
           <div>
-            <label htmlFor="note" className="block text-sm font-medium mb-1">
+            <label htmlFor="expirationDate" className="block text-sm font-medium mb-1">
+              Datum expirace (volitelné)
+            </label>
+            <input
+              type="date"
+              name="expirationDate"
+              id="expirationDate"
+              className="w-full p-2 border rounded-md bg-background"
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label htmlFor="note" className="block text-sm font-medium mb-1">
               Poznámka
             </label>
             <input
@@ -114,7 +142,6 @@ export default function StockMovementForm({ products }: { products: Product[] })
               placeholder="Důvod pohybu..."
             />
           </div>
-        </div>
 
         <div className="flex justify-end pt-2">
           <button

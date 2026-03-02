@@ -2,17 +2,35 @@
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/format";
 import Link from "next/link";
-import { ArrowRight, CreditCard, TrendingUp, Activity, Users, Wallet, PieChart, BarChart, ShoppingCart, Clock } from "lucide-react";
-import { getDashboardMetrics, getCashflowChartData, getClientShareData } from "@/services/dashboard";
-import CashflowChart from "@/components/dashboard/CashflowChart";
-import ClientShareChart from "@/components/dashboard/ClientShareChart";
+import { ArrowRight, CreditCard, TrendingUp, Activity, Users, Wallet, PieChart, BarChart, ShoppingCart, Clock, Camera } from "lucide-react";
+import { getDashboardMetrics, getCashflowChartData, getClientShareData, getSalesHeatmapData, getForgottenInvoices } from "@/services/dashboard";
+import { getExpiringContracts } from "@/actions/contracts";
+import { DateRangeFilter } from "@/components/dashboard/DateRangeFilter";
+// import CashflowChart from "@/components/dashboard/CashflowChart";
+// import ClientShareChart from "@/components/dashboard/ClientShareChart";
+// import SalesHeatmap from "@/components/dashboard/SalesHeatmap";
+import { LimitsWidget } from "@/components/dashboard/LimitsWidget";
+import { NetProfitWidget } from "@/components/dashboard/NetProfitWidget";
 import { FoxTip } from "@/components/fox/FoxTip";
+import { ForgottenInvoicesAlert } from "@/components/dashboard/ForgottenInvoicesAlert";
+import { ExpiringContractsWidget } from "@/components/dashboard/ExpiringContractsWidget";
+import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
+import { redirect } from "next/navigation";
+
+import { DashboardPreferencesWidget } from "@/components/dashboard/DashboardPreferencesWidget";
+import { BadgesWidget } from "@/components/dashboard/BadgesWidget";
+import { ZenModeButton } from "@/components/dashboard/ZenModeButton";
+import { LazyCashflowChart, LazyClientShareChart, LazySalesHeatmap } from "@/components/dashboard/LazyCharts";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   const user = await getCurrentUser();
-  if (!user) return <div>Please log in.</div>;
+  if (!user) redirect("/login");
 
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id },
@@ -35,21 +53,76 @@ export default async function Home() {
     );
   }
 
+  // Department Isolation
+  const currentUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { department: true, dashboardPreferences: true }
+  });
+
+  // Parse preferences
+  let preferences = {
+    showCashflow: true,
+    showClientShare: true,
+    showHeatmap: true,
+    showLimits: true,
+    showNetProfit: true,
+    showTips: true,
+    showForgotten: true,
+    showContracts: true
+  };
+
+  if (currentUser?.dashboardPreferences) {
+    try {
+      const parsed = JSON.parse(currentUser.dashboardPreferences);
+      preferences = { ...preferences, ...parsed };
+    } catch (e) {
+      console.error("Failed to parse dashboard preferences", e);
+    }
+  }
+
+  // Assume if role is not Admin/Manager, apply department filter
+  const isRestricted = currentUser?.department && !["ADMIN", "MANAGER", "SUPERADMIN"].includes(membership.role);
+  const departmentFilter = isRestricted ? currentUser.department : undefined;
+
+  // Parse date range from searchParams
+  const fromStr = typeof searchParams.from === 'string' ? searchParams.from : undefined;
+  const toStr = typeof searchParams.to === 'string' ? searchParams.to : undefined;
+  
+  let dateRange: { from: Date; to: Date } | undefined;
+  
+  if (fromStr && toStr) {
+      const from = new Date(fromStr);
+      const to = new Date(toStr);
+      // Validate dates
+      if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
+          dateRange = { from, to };
+      }
+  }
+
   const [
     metrics,
     cashflowData,
-    clientShareData
+    clientShareData,
+    heatmapData,
+    forgottenInvoices,
+    expiringContracts
   ] = await Promise.all([
-    getDashboardMetrics(orgId),
-    getCashflowChartData(orgId),
-    getClientShareData(orgId)
+    getDashboardMetrics(orgId, dateRange, departmentFilter || undefined),
+    getCashflowChartData(orgId, dateRange),
+    getClientShareData(orgId, dateRange),
+    getSalesHeatmapData(orgId, dateRange),
+    getForgottenInvoices(orgId),
+    getExpiringContracts(30)
   ]);
 
   return (
     <div className="container mx-auto p-8 space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Business Intelligence Dashboard</h1>
-        <div className="flex gap-2">
+        <h1 className="text-3xl font-bold tracking-tight">Přehled</h1>
+        <div className="flex gap-2 items-center">
+            <ZenModeButton />
+            <DashboardPreferencesWidget preferences={preferences} />
+            <DateRangeFilter />
             <Link 
             href="/expenses/new" 
             className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground hover:bg-secondary/80 h-10 px-4 py-2"
@@ -68,7 +141,39 @@ export default async function Home() {
       </div>
 
       {/* Fox Tip Widget */}
-      <FoxTip />
+      {preferences.showTips && <FoxTip />}
+
+      <BadgesWidget userId={user.id} orgId={orgId} />
+
+      {/* Year in Review Banner */}
+      {(new Date().getMonth() === 11 || new Date().getMonth() === 0) && (
+        <div className="bg-gradient-to-r from-orange-100 to-amber-100 dark:from-orange-950/40 dark:to-amber-950/40 border border-orange-200 dark:border-orange-900 rounded-lg p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+             <div className="p-3 bg-orange-500 rounded-full text-white">
+               <Activity className="h-6 w-6" />
+             </div>
+             <div>
+               <h3 className="text-lg font-bold text-orange-900 dark:text-orange-100">
+                 Vaše shrnutí roku {new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear()} je tady!
+               </h3>
+               <p className="text-orange-800/80 dark:text-orange-200/80">
+                 Podívejte se na své úspěchy, statistiky a kolik kávy jste vypili.
+               </p>
+             </div>
+          </div>
+          <Link href="/reports/year-in-review">
+            <button className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-2 px-6 rounded-full shadow-lg transition-transform transform hover:scale-105">
+              Zobrazit shrnutí
+            </button>
+          </Link>
+        </div>
+      )}
+
+      {/* Forgotten Invoices Alert */}
+      {preferences.showForgotten && <ForgottenInvoicesAlert clients={forgottenInvoices} />}
+
+      {/* Expiring Contracts Widget */}
+      {preferences.showContracts && <ExpiringContractsWidget contracts={expiringContracts} />}
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -96,12 +201,12 @@ export default async function Home() {
 
         <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <h3 className="tracking-tight text-sm font-medium text-muted-foreground">Predikce DPH</h3>
+            <h3 className="tracking-tight text-sm font-medium text-muted-foreground">Odhad DPH k odvodu</h3>
             <PieChart className="h-4 w-4 text-orange-500" />
           </div>
-          <div className="text-2xl font-bold">{formatCurrency(metrics.vatToPay)}</div>
+          <div className="text-2xl font-bold">{formatCurrency(metrics.vatToPayQuarterly)}</div>
           <p className="text-xs text-muted-foreground mt-1">
-            K úhradě (Vybráno - Zaplaceno)
+            Za aktuální čtvrtletí (Predikce)
           </p>
         </div>
 
@@ -117,43 +222,58 @@ export default async function Home() {
         </div>
       </div>
       
-      {/* VAT Limit Progress */}
-      <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
-        <div className="flex flex-row items-center justify-between mb-4">
-            <h3 className="text-lg font-medium">Limit DPH (12 měsíců)</h3>
-            <span className="text-sm text-muted-foreground">{metrics.vatLimitPercentage.toFixed(1)}% z 2 mil. Kč</span>
-        </div>
-        <div className="h-4 w-full bg-secondary rounded-full overflow-hidden">
-            <div 
-                className={`h-full ${metrics.vatLimitPercentage > 85 ? 'bg-red-500' : 'bg-green-500'}`} 
-                style={{ width: `${Math.min(metrics.vatLimitPercentage, 100)}%` }}
-            />
-        </div>
-        <p className="text-sm text-muted-foreground mt-2">
-            Aktuální obrat: {formatCurrency(metrics.vatLimit)}
-        </p>
+      {/* OSVČ Widgets */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {preferences.showLimits && (
+          <LimitsWidget 
+            vatTurnover12m={metrics.vatTurnover12m} 
+            vatLimit={metrics.vatLimit} 
+            incomeThisYear={metrics.incomeThisYear}
+          />
+        )}
+        {preferences.showNetProfit && (
+          <NetProfitWidget 
+            income={metrics.incomeThisYear} 
+            expenses={metrics.expensesThisYear}
+          />
+        )}
       </div>
 
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <div className="col-span-4 rounded-xl border bg-card text-card-foreground shadow-sm">
-          <div className="p-6 pb-0">
-            <h3 className="text-lg font-medium">Cashflow (Posledních 6 měsíců)</h3>
+        {preferences.showCashflow && (
+          <div className="col-span-4 rounded-xl border bg-card text-card-foreground shadow-sm">
+            <div className="p-6 pb-0">
+              <h3 className="text-lg font-medium">Cashflow (Posledních 6 měsíců)</h3>
+            </div>
+            <div className="p-6">
+              <LazyCashflowChart data={cashflowData} />
+            </div>
           </div>
-          <div className="p-6">
-            <CashflowChart data={cashflowData} />
-          </div>
-        </div>
+        )}
         
-        <div className="col-span-3 rounded-xl border bg-card text-card-foreground shadow-sm">
-          <div className="p-6 pb-0">
-            <h3 className="text-lg font-medium">Top Klienti (Podíl na obratu)</h3>
+        {preferences.showClientShare && (
+          <div className="col-span-3 rounded-xl border bg-card text-card-foreground shadow-sm">
+            <div className="p-6 pb-0">
+              <h3 className="text-lg font-medium">Top Klienti (Podíl na obratu)</h3>
+            </div>
+            <div className="p-6">
+              <LazyClientShareChart data={clientShareData} />
+            </div>
           </div>
-          <div className="p-6">
-            <ClientShareChart data={clientShareData} />
-          </div>
-        </div>
+        )}
       </div>
+
+      {/* Sales Heatmap */}
+      {preferences.showHeatmap && (
+        <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-medium">Aktivita prodejů (Heatmapa)</h3>
+            <p className="text-sm text-muted-foreground">Přehled vystavených faktur za poslední rok</p>
+          </div>
+          <LazySalesHeatmap data={heatmapData} />
+        </div>
+      )}
       
       {/* Quick Access Grid */}
       <h2 className="text-xl font-bold tracking-tight mt-8">Rychlé akce</h2>
@@ -206,6 +326,12 @@ export default async function Home() {
             </div>
          </Link>
       </div>
+      <Link
+        href="/ocr"
+        className="fixed bottom-20 right-4 h-14 w-14 bg-primary text-primary-foreground rounded-full shadow-lg flex items-center justify-center md:hidden hover:bg-primary/90 transition-colors z-40"
+      >
+        <Camera className="h-6 w-6" />
+      </Link>
     </div>
   );
 }

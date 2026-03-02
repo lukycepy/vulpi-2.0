@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_ROLES } from "@/lib/permissions";
-import { Role } from "@prisma/client";
 import { cookies } from "next/headers";
+import { decryptString } from "@/lib/crypto";
 
 export async function getCurrentUser() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const impersonatedUserId = cookieStore.get("impersonated_user_id")?.value;
 
   if (impersonatedUserId) {
@@ -12,14 +12,32 @@ export async function getCurrentUser() {
     if (user) return user;
   }
 
-  // TODO: Implement real session retrieval (e.g. from cookies/JWT)
-  // For now, return the first user (simulated single-user dev mode)
-  // In a real app, this would decode the session token
-  return await prisma.user.findFirst();
+  const authToken = cookieStore.get("auth_token")?.value;
+  if (!authToken) return null;
+
+  try {
+    const userId = decryptString(authToken);
+    if (!userId) return null;
+    
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    
+    // Check if user is blocked
+    if (user?.isBlocked) {
+        // We should clear the cookie if blocked
+        // But we are in a server function, cannot set cookies easily unless it's a Server Action or Middleware
+        // For now, we return null, effectively logging them out in the eyes of the app
+        return null;
+    }
+
+    return user;
+  } catch (e) {
+    return null;
+  }
 }
 
 export async function isImpersonating() {
-  return cookies().has("impersonated_user_id");
+  const cookieStore = await cookies();
+  return cookieStore.has("impersonated_user_id");
 }
 
 export async function getUserPermissions(userId: string, organizationId: string): Promise<string[]> {
@@ -41,9 +59,9 @@ export async function getUserPermissions(userId: string, organizationId: string)
 
   // Fallback to legacy role mapping
   // We need to cast membership.role (enum) to string to use as key
-  const roleName = membership.role as unknown as string;
-  if (roleName && DEFAULT_ROLES[roleName]) {
-    return DEFAULT_ROLES[roleName];
+  const roleName = membership.role;
+  if (roleName && roleName in DEFAULT_ROLES) {
+    return DEFAULT_ROLES[roleName as keyof typeof DEFAULT_ROLES];
   }
 
   return [];

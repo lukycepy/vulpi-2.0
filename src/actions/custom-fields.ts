@@ -10,10 +10,12 @@ const customFieldSchema = z.object({
   key: z.string().min(1, "Klíč je povinný").regex(/^[a-z0-9_]+$/, "Klíč může obsahovat pouze malá písmena, čísla a podtržítka"),
   type: z.enum(["TEXT", "NUMBER", "DATE", "BOOLEAN"]),
   description: z.string().optional(),
+  targetModel: z.enum(["INVOICE", "CLIENT", "PROJECT"]),
 });
 
 export async function getCustomFieldDefinitions(organizationId: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
 
   // Basic check: user must belong to the organization
   const membership = await prisma.membership.findFirst({
@@ -39,8 +41,10 @@ export async function createCustomFieldDefinition(data: {
   key: string;
   type: "TEXT" | "NUMBER" | "DATE" | "BOOLEAN";
   description?: string;
+  targetModel: "INVOICE" | "CLIENT" | "PROJECT";
 }) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
 
   const canManage = await hasPermission(user.id, data.organizationId, "manage_custom_fields");
   if (!canManage) {
@@ -49,7 +53,7 @@ export async function createCustomFieldDefinition(data: {
 
   const validation = customFieldSchema.safeParse(data);
   if (!validation.success) {
-    throw new Error(validation.error.errors[0].message);
+    throw new Error(validation.error.issues[0].message);
   }
 
   // Check for duplicate key in organization
@@ -80,6 +84,7 @@ export async function updateCustomFieldDefinition(
   }
 ) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
 
   const field = await prisma.customFieldDefinition.findUnique({
     where: { id },
@@ -107,6 +112,7 @@ export async function updateCustomFieldDefinition(
 
 export async function deleteCustomFieldDefinition(id: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
 
   const field = await prisma.customFieldDefinition.findUnique({
     where: { id },

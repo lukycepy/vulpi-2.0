@@ -22,16 +22,29 @@ export default async function ApprovalsPage() {
     );
   }
 
-  const pendingRequests = await prisma.approvalRequest.findMany({
-    where: { status: "PENDING" },
+  const rawRequests = await prisma.approvalRequest.findMany({
+    where: { 
+      status: "PENDING",
+      entityType: "INVOICE"
+    },
     include: {
-      invoice: {
-        include: { client: true }
-      },
       requester: true
     },
-    orderBy: { invoice: { createdAt: "desc" } }
+    orderBy: { createdAt: "desc" }
   });
+
+  const invoiceIds = rawRequests.map(r => r.entityId);
+  const invoices = await prisma.invoice.findMany({
+    where: { id: { in: invoiceIds } },
+    include: { client: true }
+  });
+
+  const pendingRequests = rawRequests
+    .map(request => {
+      const invoice = invoices.find(i => i.id === request.entityId);
+      return { ...request, invoice };
+    })
+    .filter((req): req is (typeof rawRequests[0] & { invoice: NonNullable<typeof invoices[0]> }) => !!req.invoice);
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-8">

@@ -32,6 +32,8 @@ export async function createRole(data: {
   permissions: string[]; // Array of permission strings
 }) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const canManageRoles = await hasPermission(user.id, data.organizationId, "manage_roles");
   if (!canManageRoles) {
     throw new Error("Nemáte oprávnění spravovat role.");
@@ -56,6 +58,8 @@ export async function updateRole(id: string, data: {
   permissions?: string[];
 }) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const existingRole = await prisma.roleDefinition.findUnique({ where: { id } });
   if (!existingRole) throw new Error("Role not found");
 
@@ -80,6 +84,8 @@ export async function updateRole(id: string, data: {
 
 export async function deleteRole(id: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const existingRole = await prisma.roleDefinition.findUnique({ where: { id } });
   if (!existingRole) throw new Error("Role not found");
 
@@ -96,6 +102,8 @@ export async function deleteRole(id: string) {
 
 export async function cloneRole(sourceRoleId: string, newName: string, organizationId: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+  
   const canManageRoles = await hasPermission(user.id, organizationId, "manage_roles");
   if (!canManageRoles) {
     throw new Error("Nemáte oprávnění spravovat role.");

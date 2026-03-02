@@ -1,7 +1,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { transporter } from "@/lib/email";
-import { getInvoiceEmailTemplate, getReminderEmailTemplate, getPaymentConfirmationTemplate } from "@/emails/templates";
+import { getInvoiceEmailTemplate, getReminderEmailTemplate, getPaymentConfirmationTemplate, getAnniversaryEmailTemplate, getNewsletterEmailTemplate } from "@/emails/templates";
 import { generateInvoicePdfBuffer } from "@/lib/pdf-server";
 import { generateQRCode, generateSPDCString } from "@/lib/qr";
 import { Invoice, Client, Organization, BankDetail, InvoiceItem } from "@prisma/client";
@@ -22,6 +22,7 @@ async function getInvoiceWithDetails(invoiceId: string) {
       organization: true,
       items: true,
       bankDetail: true,
+      template: true,
     },
   });
 
@@ -70,27 +71,31 @@ export async function sendInvoiceEmail(invoiceId: string) {
       organizationId: invoice.organizationId,
       recipient: invoice.client.email!,
       subject: `Faktura ${invoice.number} - ${invoice.organization.name}`,
-      body: "Invoice Email",
       status: "SENT",
     },
   });
 
-  const trackingUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/email/track/${emailLog.id}`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const trackingPixelUrl = `${baseUrl}/api/email/track/${emailLog.id}`;
+  
+  // Wrap portal link with tracking
+  const portalLink = `${baseUrl}/portal/invoices/${invoice.id}?code=${invoice.client.accessCode || ''}`;
+  const trackedPortalLink = `${baseUrl}/api/track/click?url=${encodeURIComponent(portalLink)}&emailLogId=${emailLog.id}`;
   
   const html = getInvoiceEmailTemplate(
     invoice.client.name,
     invoice.number,
     formatCurrency(invoice.totalAmount, invoice.currency),
     formatDate(invoice.dueAt),
-    undefined,
-    trackingUrl
+    trackedPortalLink, // Pass tracked link instead of raw link or undefined
+    trackingPixelUrl
   );
 
   try {
     await transporter.sendMail({
       from: `"${invoice.organization.name}" <${process.env.SMTP_USER || 'vulpi@lcepelak.cz'}>`,
       to: invoice.client.email!,
-      bcc: process.env.ARCHIVE_EMAIL,
+      bcc: invoice.organization.archiveEmail || process.env.ARCHIVE_EMAIL,
       subject: `Faktura ${invoice.number}`,
       html,
       attachments: [
@@ -102,6 +107,105 @@ export async function sendInvoiceEmail(invoiceId: string) {
     });
   } catch (error) {
     console.error("Failed to send email:", error);
+    await prisma.emailLog.update({
+      where: { id: emailLog.id },
+      data: { status: "FAILED" },
+    });
+    throw error;
+  }
+}
+
+export async function sendAnniversaryEmail(clientId: string, years: number) {
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    include: { organization: true }
+  });
+
+  if (!client || !client.email) return;
+
+  const emailLog = await prisma.emailLog.create({
+    data: {
+      clientId: client.id,
+      organizationId: client.organizationId,
+      recipient: client.email,
+      subject: `Výročí spolupráce - ${client.organization.name}`,
+      status: "SENT",
+      body: "Anniversary Email",
+    },
+  });
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const trackingPixelUrl = `${baseUrl}/api/email/track/${emailLog.id}`;
+
+  const html = getAnniversaryEmailTemplate(
+    client.name,
+    years,
+    trackingPixelUrl
+  );
+
+  try {
+    await transporter.sendMail({
+      from: `"${client.organization.name}" <${process.env.SMTP_USER || "vulpi@lcepelak.cz"}>`,
+      to: client.email,
+      subject: `Výročí spolupráce 🎉`,
+      html,
+    });
+  } catch (error) {
+    console.error("Failed to send anniversary email:", error);
+    await prisma.emailLog.update({
+      where: { id: emailLog.id },
+      data: { status: "FAILED" },
+    });
+  }
+}
+
+export async function sendNewsletterEmail(clientId: string, subject: string, body: string) {
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    include: { organization: true }
+  });
+
+  if (!client || !client.email) return;
+
+  const emailLog = await prisma.emailLog.create({
+    data: {
+      clientId: client.id,
+      organizationId: client.organizationId,
+      recipient: client.email,
+      subject: subject,
+      status: "SENT",
+      body: body.substring(0, 100),
+    },
+  });
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const trackingPixelUrl = `${baseUrl}/api/email/track/${emailLog.id}`;
+
+  let processedBody = body.replace(/{{clientName}}/g, client.name);
+  
+  processedBody = processedBody.replace(/href="([^"]*)"/g, (match, url) => {
+    if (url.startsWith("http")) {
+       const trackedUrl = `${baseUrl}/api/track/click?url=${encodeURIComponent(url)}&emailLogId=${emailLog.id}`;
+       return `href="${trackedUrl}"`;
+    }
+    return match;
+  });
+
+  const html = getNewsletterEmailTemplate(
+    client.name,
+    processedBody,
+    trackingPixelUrl
+  );
+
+  try {
+    await transporter.sendMail({
+      from: `"${client.organization.name}" <${process.env.SMTP_USER || "vulpi@lcepelak.cz"}>`,
+      to: client.email,
+      subject: subject,
+      html,
+    });
+  } catch (error) {
+    console.error("Failed to send newsletter email:", error);
     await prisma.emailLog.update({
       where: { id: emailLog.id },
       data: { status: "FAILED" },
@@ -126,12 +230,16 @@ export async function sendReminderEmail(invoiceId: string, daysOverdue: number) 
       organizationId: invoice.organizationId,
       recipient: invoice.client.email!,
       subject: subject,
-      body: `Reminder Email (Overdue: ${daysOverdue} days)`,
       status: "SENT",
     },
   });
 
-  const trackingUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/email/track/${emailLog.id}`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const trackingPixelUrl = `${baseUrl}/api/email/track/${emailLog.id}`;
+  
+  // Wrap portal link with tracking
+  const portalLink = `${baseUrl}/portal/invoices/${invoice.id}?code=${invoice.client.accessCode || ''}`;
+  const trackedPortalLink = `${baseUrl}/api/track/click?url=${encodeURIComponent(portalLink)}&emailLogId=${emailLog.id}`;
 
   const html = getReminderEmailTemplate(
     invoice.client.name,
@@ -140,14 +248,15 @@ export async function sendReminderEmail(invoiceId: string, daysOverdue: number) 
     formatDate(invoice.dueAt),
     daysOverdue,
     invoice.variableSymbol || "-",
-    trackingUrl
+    trackedPortalLink,
+    trackingPixelUrl
   );
 
   try {
     await transporter.sendMail({
       from: `"${invoice.organization.name}" <${process.env.SMTP_USER || 'vulpi@lcepelak.cz'}>`,
       to: invoice.client.email!,
-      bcc: process.env.ARCHIVE_EMAIL,
+      bcc: invoice.organization.archiveEmail || process.env.ARCHIVE_EMAIL,
       subject: subject,
       html,
       attachments: [
@@ -174,11 +283,9 @@ export async function sendPaymentConfirmationEmail(invoiceId: string, amountPaid
   const emailLog = await prisma.emailLog.create({
     data: {
       invoiceId: invoice.id,
-      clientId: invoice.clientId,
       organizationId: invoice.organizationId,
       recipient: invoice.client.email!,
       subject: `Potvrzení úhrady faktury ${invoice.number}`,
-      body: "Payment Confirmation Email",
       status: "SENT",
     },
   });
@@ -196,7 +303,7 @@ export async function sendPaymentConfirmationEmail(invoiceId: string, amountPaid
     await transporter.sendMail({
       from: `"${invoice.organization.name}" <${process.env.SMTP_USER || 'vulpi@lcepelak.cz'}>`,
       to: invoice.client.email!,
-      bcc: process.env.ARCHIVE_EMAIL,
+      bcc: invoice.organization.archiveEmail || process.env.ARCHIVE_EMAIL,
       subject: `Potvrzení úhrady faktury ${invoice.number}`,
       html,
     });

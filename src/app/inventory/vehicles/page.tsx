@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 import VehicleForm from "@/components/inventory/VehicleForm";
 import VehicleLogForm from "@/components/inventory/VehicleLogForm";
 import { formatDate } from "@/lib/format";
@@ -46,7 +47,7 @@ export default async function VehiclesPage() {
     orderBy: { name: "asc" },
   });
 
-  const logs = await prisma.vehicleLog.findMany({
+  const logs = await prisma.vehicleLogEntry.findMany({
     where: { vehicle: { organizationId: orgId } },
     include: { vehicle: true },
     orderBy: { date: "desc" },
@@ -106,7 +107,7 @@ export default async function VehiclesPage() {
                           {formatDate(log.date)}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-medium">{log.vehicle.plate}</div>
+                          <div className="font-medium">{log.vehicle.licensePlate}</div>
                           <div className="text-xs text-muted-foreground">{log.vehicle.name}</div>
                         </td>
                         <td className="px-4 py-3">
@@ -121,7 +122,7 @@ export default async function VehiclesPage() {
                           {log.distance} km
                         </td>
                         <td className="px-4 py-3 text-right text-muted-foreground text-xs font-mono">
-                          {log.endKm}
+                          {log.endOdometer}
                         </td>
                       </tr>
                     ))
@@ -151,7 +152,7 @@ export default async function VehiclesPage() {
                 <div key={vehicle.id} className="bg-card border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <h3 className="font-semibold text-lg">{vehicle.plate}</h3>
+                      <h3 className="font-semibold text-lg">{vehicle.licensePlate}</h3>
                       <p className="text-sm text-muted-foreground">{vehicle.name}</p>
                     </div>
                     <div className="bg-secondary p-2 rounded-full text-secondary-foreground">

@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisputeActions } from "@/components/portal/DisputeActions";
+import { SentimentAnalyzer } from "@/components/disputes/SentimentAnalyzer";
 import Link from "next/link";
 import { AlertCircle, CheckCircle, XCircle } from "lucide-react";
 
@@ -82,12 +83,15 @@ export default async function DisputesPage() {
                         <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                         <p>{dispute.message}</p>
                       </div>
+                      <div className="mt-2">
+                        <SentimentAnalyzer text={dispute.message} />
+                      </div>
                     </div>
                     
                     <div className="flex items-center gap-4 text-sm">
                         <div>
                             <span className="text-muted-foreground block">Částka faktury</span>
-                            <span className="font-medium">{formatCurrency(dispute.invoice.totalGross)}</span>
+                            <span className="font-medium">{formatCurrency(dispute.invoice.totalAmount)}</span>
                         </div>
                         <div>
                             <span className="text-muted-foreground block">Splatnost</span>

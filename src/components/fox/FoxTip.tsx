@@ -5,19 +5,16 @@ import { X, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const TIPS = [
-  "Nezapomeňte, že faktury po splatnosti můžete exportovat a poslat upomínku.",
-  "Nastavte si vlastní šablony faktur v Nastavení -> Šablony pro profesionální vzhled.",
-  "Sledujte marže u svých produktů, abyste věděli, co vám nejvíce vydělává.",
-  "Můžete přidat logo vaší firmy do nastavení organizace.",
-  "Využijte funkci 'Impersonace' pro kontrolu, co vidí vaši zaměstnanci.",
-  "Pravidelně kontrolujte stav bankovního účtu v sekci Banka.",
-  "Sledujte své výdaje a kategorizujte je pro lepší přehled o cashflow.",
-  "Vytvořte si vlastní pole pro faktury, pokud potřebujete evidovat specifické údaje.",
-  "Zkuste použít klávesové zkratky pro rychlejší práci.",
-  "Můžete filtrovat faktury podle stavu (zaplacené, po splatnosti, atd.).",
-  "Liščí tip: Udržujte pořádek ve skladu pomocí inventury.",
-  "Liščí tip: Automatizujte opakující se faktury (již brzy!).",
-  "Nezapomeňte zálohovat svá data (my to děláme za vás, ale jistota je jistota).",
+  "Liška radí: Nezapomeňte si dát do nákladů internet! Každá koruna se počítá.",
+  "Liška radí: Faktury vystavujte hned po dokončení práce, ať máte peníze dříve na účtu.",
+  "Liška radí: Používejte paušální výdaje, pokud máte nízké reálné náklady.",
+  "Liška radí: Zálohujte si účetnictví. Vulpi to dělá za vás, ale jistota je jistota.",
+  "Liška radí: Kontrolujte splatnost faktur. Upomínky posílejte s grácií.",
+  "Liška radí: Oddělte osobní a firemní finance. Ušetříte si spoustu starostí.",
+  "Liška radí: Využijte QR kódy na fakturách. Klienti platí rychleji.",
+  "Liška radí: Sledujte své cashflow. Přehled je základ úspěchu.",
+  "Liška radí: Nebojte se říct si o zálohu u větších projektů.",
+  "Liška radí: Odpočívejte. Vyhořelý podnikatel nic nevydělá.",
 ];
 
 export function FoxTip() {

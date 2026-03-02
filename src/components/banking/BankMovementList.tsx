@@ -12,9 +12,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Check, X, Search, AlertCircle, Link as LinkIcon, ExternalLink } from "lucide-react";
+import { MoreHorizontal, Check, X, Search, AlertCircle, Link as LinkIcon, ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 
 interface BankMovementListProps {
   initialMovements: any[];
@@ -30,6 +31,8 @@ export function BankMovementList({ initialMovements }: BankMovementListProps) {
     if (filter === "PROPOSED") return m.status === "PROPOSED" || m.status === "PROPOSED_MULTI";
     return m.status === filter;
   });
+
+  const { displayedItems, observerTarget } = useInfiniteScroll(filteredMovements);
 
   const handleConfirm = async (movementId: string, invoiceId: string) => {
     setLoadingId(movementId);
@@ -130,7 +133,8 @@ export function BankMovementList({ initialMovements }: BankMovementListProps) {
                 </td>
               </tr>
             ) : (
-              filteredMovements.map((movement) => (
+              <>
+              {displayedItems.map((movement) => (
                 <tr key={movement.id} className="border-b transition-colors hover:bg-muted/50">
                   <td className="p-4 align-middle font-medium">
                     {formatDate(movement.date)}
@@ -194,65 +198,105 @@ export function BankMovementList({ initialMovements }: BankMovementListProps) {
                           <AlertCircle className="mr-1 h-3 w-3" />
                           Více kandidátů
                         </span>
+                        {movement.candidates && movement.candidates.length > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                                {movement.candidates.length} kandidátů
+                            </div>
+                        )}
                       </div>
                     )}
                     {movement.status === "IGNORED" && (
-                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-400">
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600 opacity-50">
                         Ignorováno
                       </span>
                     )}
                   </td>
-                  <td className="p-4 align-middle">
-                    <div className="flex items-center gap-2">
-                        {movement.status === "PROPOSED" && movement.invoiceId && (
+                  <td className="p-4 align-middle text-right">
+                    <div className="flex items-center justify-end gap-2">
+                        {movement.status === "PROPOSED" && movement.invoice && (
                             <Button 
                                 size="sm" 
                                 variant="default" 
                                 className="h-8 bg-green-600 hover:bg-green-700"
+                                onClick={() => handleConfirm(movement.id, movement.invoice.id)}
                                 disabled={loadingId === movement.id}
-                                onClick={() => handleConfirm(movement.id, movement.invoiceId!)}
                             >
-                                {loadingId === movement.id ? "..." : <Check className="h-4 w-4" />}
+                                {loadingId === movement.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 mr-1" />}
+                                Potvrdit
                             </Button>
                         )}
-                         {movement.status === "UNMATCHED" && (
-                            <Button 
-                                size="sm" 
-                                variant="outline" 
-                                className="h-8"
-                                disabled={loadingId === movement.id}
-                                // onClick={() => handleManualMatch(movement.id)} // TODO: Implement manual match dialog
-                            >
-                                <LinkIcon className="h-4 w-4" />
-                            </Button>
+                         {movement.status === "PROPOSED_MULTI" && (
+                             <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="outline" className="h-8">
+                                        <Search className="h-3 w-3 mr-1" />
+                                        Vybrat
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Možné faktury</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {movement.candidates?.map((cand: any) => (
+                                        <DropdownMenuItem key={cand.id} onClick={() => handleConfirm(movement.id, cand.id)}>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="font-medium">{cand.number}</span>
+                                                <span className="text-xs text-muted-foreground">{formatCurrency(cand.totalAmount, cand.currency)} - {cand.clientName}</span>
+                                            </div>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                             </DropdownMenu>
                         )}
-                        {movement.status === "MATCHED" && (
-                             <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                disabled={loadingId === movement.id}
-                                onClick={() => handleUnmatch(movement.id)}
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        )}
-                        
-                        {(movement.status === "UNMATCHED" || movement.status === "PROPOSED" || movement.status === "PROPOSED_MULTI") && (
-                            <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="h-8 text-gray-400 hover:text-gray-600"
-                                disabled={loadingId === movement.id}
-                                onClick={() => handleIgnore(movement.id)}
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-8 w-8">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                {movement.status === "MATCHED" && (
+                                     <DropdownMenuItem onClick={() => handleUnmatch(movement.id)} className="text-red-600">
+                                        <X className="mr-2 h-4 w-4" />
+                                        Zrušit spárování
+                                     </DropdownMenuItem>
+                                )}
+                                {(movement.status === "UNMATCHED" || movement.status === "PROPOSED" || movement.status === "PROPOSED_MULTI") && (
+                                    <>
+                                        <DropdownMenuItem>
+                                            <LinkIcon className="mr-2 h-4 w-4" />
+                                            Ručně spárovat
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => handleIgnore(movement.id)}>
+                                            <X className="mr-2 h-4 w-4" />
+                                            Ignorovat pohyb
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+                                {movement.status === "IGNORED" && (
+                                    <DropdownMenuItem onClick={() => handleUnmatch(movement.id)}>
+                                        <Check className="mr-2 h-4 w-4" />
+                                        Obnovit
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                   </td>
                 </tr>
-              ))
+              ))}
+               {/* Loading sentinel */}
+               {displayedItems.length < filteredMovements.length && (
+                 <tr ref={observerTarget}>
+                   <td colSpan={6} className="h-24 text-center align-middle text-muted-foreground">
+                     <div className="flex justify-center items-center">
+                       <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                       Načítám další pohyby...
+                     </div>
+                   </td>
+                 </tr>
+               )}
+              </>
             )}
           </tbody>
         </table>

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import InvoiceEditor from "@/components/invoices/InvoiceEditor";
+import { generateNextInvoiceNumber } from "@/actions/invoice";
 import { fetchCNBRates } from "@/services/cnb";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 
@@ -37,14 +38,19 @@ export default async function NewInvoicePage(props: PageProps) {
   const searchParams = await props.searchParams;
   const { from, mode } = searchParams;
 
-  const [clients, bankDetails, cnbRates, customFields] = await Promise.all([
-    prisma.client.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
+  const [clients, bankDetails, cnbRates, customFields, nextInvoiceNumber, organization] = await Promise.all([
+    prisma.client.findMany({ where: { organizationId: orgId }, select: { id: true, name: true, language: true } }),
     prisma.bankDetail.findMany({ where: { organizationId: orgId }, select: { id: true, bankName: true, accountNumber: true } }),
     fetchCNBRates(),
     getCustomFieldDefinitions(orgId),
+    generateNextInvoiceNumber(orgId),
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { defaultGdprClause: true, defaultSlaText: true }
+    })
   ]);
 
-  let initialData = null;
+  let initialData: any = null;
 
   if (from) {
     const sourceInvoice = await prisma.invoice.findUnique({
@@ -63,6 +69,7 @@ export default async function NewInvoicePage(props: PageProps) {
         items: sourceInvoice.items.map(item => ({
             description: item.description,
             quantity: item.quantity,
+            unit: item.unit,
             unitPrice: item.unitPrice,
             vatRate: item.vatRate,
             discount: item.discount,
@@ -78,26 +85,33 @@ export default async function NewInvoicePage(props: PageProps) {
 
       if (mode === 'convert') {
          initialData.type = 'FAKTURA';
-         initialData.number = new Date().getFullYear() + "001"; 
+         initialData.number = nextInvoiceNumber; 
          initialData.issuedAt = todayStr;
          initialData.dueAt = dueStr;
       } else if (mode === 'duplicate') {
          initialData.type = sourceInvoice.type; // Keep original type
-         initialData.number = new Date().getFullYear() + "001";
+         initialData.number = nextInvoiceNumber;
          initialData.issuedAt = todayStr;
          initialData.dueAt = dueStr;
       } else if (mode === 'credit_note') {
          initialData.type = 'DOBROPIS';
          initialData.relatedId = sourceInvoice.id; // Pass relatedId
+         // For credit notes, we might want a different series or just "D"+number
+         // Keeping existing logic for now, or we can improve it later
          initialData.number = "D" + new Date().getFullYear() + "001";
          initialData.issuedAt = todayStr;
          initialData.dueAt = dueStr;
       } else {
          // Fallback if just 'from' is present without specific mode (e.g. simple copy)
          initialData.type = sourceInvoice.type;
-         initialData.number = new Date().getFullYear() + "001";
+         initialData.number = nextInvoiceNumber;
       }
     }
+  } else {
+    // New invoice
+    initialData = {
+      number: nextInvoiceNumber
+    };
   }
 
   return (
@@ -106,8 +120,9 @@ export default async function NewInvoicePage(props: PageProps) {
         clients={clients} 
         bankDetails={bankDetails} 
         cnbRates={cnbRates}
-        customFields={customFields}
         initialData={initialData}
+        customFields={customFields}
+        organization={organization || undefined}
       />
     </div>
   );

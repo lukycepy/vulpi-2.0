@@ -1,15 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { sendPaymentConfirmationEmail } from "@/services/email";
+import { triggerWebhook, sendNotificationWebhook } from "@/services/webhook";
 
 export async function matchPayments(orgId?: string) {
   const whereClause: any = { status: "UNMATCHED" };
   if (orgId) {
-    whereClause.bankIntegration = { organizationId: orgId };
+    whereClause.integration = { organizationId: orgId };
   }
 
   const movements = await prisma.bankMovement.findMany({
     where: whereClause,
-    include: { bankIntegration: true },
+    include: { integration: true },
   });
 
   let matchedCount = 0;
@@ -30,6 +31,7 @@ export async function matchPayments(orgId?: string) {
           variableSymbol: movement.variableSymbol,
           status: { in: ["ISSUED", "PARTIAL"] },
         },
+        include: { organization: true, client: true }
       });
 
       if (invoice && invoice.currency === movement.currency) {
@@ -37,14 +39,16 @@ export async function matchPayments(orgId?: string) {
         const newPaidAmount = currentPaid + movement.amount;
         const remaining = invoice.totalAmount - newPaidAmount;
 
-        // Fully Paid (within small tolerance)
-        if (remaining < 0.01) {
+        // Overpayment (paid more than total)
+        if (remaining <= -0.01) {
+           const overpayment = Math.abs(remaining);
            await prisma.$transaction([
             prisma.invoice.update({
               where: { id: invoice.id },
               data: { 
                 status: "PAID", 
-                paidAmount: newPaidAmount 
+                paidAmount: newPaidAmount,
+                overpaymentAmount: 0
               },
             }),
             prisma.bankMovement.update({
@@ -57,20 +61,84 @@ export async function matchPayments(orgId?: string) {
           ]);
 
           try {
-            await sendPaymentConfirmationEmail(invoice.id);
+            await sendPaymentConfirmationEmail(invoice.id, movement.amount);
           } catch (e) {
             console.error(`Failed to send confirmation email for invoice ${invoice.id}`, e);
+          }
+
+          // Trigger Webhook
+          try {
+            await triggerWebhook(invoice.organizationId, "INVOICE_PAID", {
+              id: invoice.id,
+              number: invoice.number,
+              variableSymbol: invoice.variableSymbol,
+              totalAmount: invoice.totalAmount,
+              paidAmount: newPaidAmount,
+              status: "PAID",
+              currency: invoice.currency
+            });
+
+            // Custom Notification Webhook
+            if (invoice.organization.notificationWebhookUrl) {
+                const message = `💰 Faktura #${invoice.number} od klienta ${invoice.client.name} byla právě uhrazena!`;
+                await sendNotificationWebhook(invoice.organization.notificationWebhookUrl, message);
+            }
+          } catch (e) {
+             console.error(`Failed to trigger webhook for invoice ${invoice.id}`, e);
+          }
+          
+          matchedCount++;
+          continue;
+        }
+
+        // Exact Payment
+        if (Math.abs(remaining) < 0.01) {
+           await prisma.$transaction([
+            prisma.invoice.update({
+              where: { id: invoice.id },
+              data: { 
+                status: "PAID", 
+                paidAmount: newPaidAmount,
+                overpaymentAmount: 0
+              } as any,
+            }),
+            prisma.bankMovement.update({
+              where: { id: movement.id },
+              data: {
+                status: "MATCHED",
+                invoiceId: invoice.id,
+              },
+            }),
+          ]);
+
+          try {
+            await sendPaymentConfirmationEmail(invoice.id, movement.amount);
+          } catch (e) {
+            console.error(`Failed to send confirmation email for invoice ${invoice.id}`, e);
+          }
+
+          try {
+            await triggerWebhook(invoice.organizationId, "INVOICE_PAID", {
+              ...invoice,
+              status: "PAID",
+              paidAmount: newPaidAmount,
+              overpaymentAmount: 0
+            });
+
+            // Custom Notification Webhook
+            if (invoice.organization.notificationWebhookUrl) {
+                const message = `💰 Faktura #${invoice.number} od klienta ${invoice.client.name} byla právě uhrazena!`;
+                await sendNotificationWebhook(invoice.organization.notificationWebhookUrl, message);
+            }
+          } catch (e) {
+            console.error(`Failed to trigger webhook for invoice ${invoice.id}`, e);
           }
           
           matchedCount++;
           continue;
         } 
         
-        // Partial Payment (or Overpayment handled simply as PAID if remaining < 0)
-        // If remaining is positive, it's PARTIAL.
-        // If remaining is negative (overpaid), we still mark as PAID but track full amount?
-        // Let's handle overpayment separately if needed, but for now:
-        
+        // Partial Payment
         if (remaining > 0.01) {
            await prisma.$transaction([
             prisma.invoice.update({
@@ -85,7 +153,6 @@ export async function matchPayments(orgId?: string) {
               data: {
                 status: "MATCHED",
                 invoiceId: invoice.id,
-                message: "Částečná úhrada",
               },
             }),
           ]);
@@ -118,7 +185,7 @@ export async function matchPayments(orgId?: string) {
     });
 
     // Filter by amount (remaining amount matches movement amount)
-    const amountMatches = candidates.filter(c => {
+    const amountMatches = candidates.filter((c: any) => {
         const remaining = c.totalAmount - (c.paidAmount || 0);
         return Math.abs(remaining - movement.amount) < 0.01;
     });
@@ -128,7 +195,7 @@ export async function matchPayments(orgId?: string) {
     // Refine candidates by Client Name if available
     let bestCandidates = amountMatches;
     if (movement.accountName) {
-        const nameMatches = amountMatches.filter(c => 
+        const nameMatches = amountMatches.filter((c: any) => 
             (c.client.name && movement.accountName && c.client.name.toLowerCase().includes(movement.accountName.toLowerCase())) ||
             (movement.accountName && c.client.name && movement.accountName.toLowerCase().includes(c.client.name.toLowerCase()))
         );
@@ -143,7 +210,6 @@ export async function matchPayments(orgId?: string) {
         data: {
           status: "PROPOSED",
           invoiceId: bestCandidates[0].id,
-          message: movement.accountName ? "Shoda částky a jména" : "Shoda částky",
         },
       });
       continue;
@@ -154,7 +220,6 @@ export async function matchPayments(orgId?: string) {
         where: { id: movement.id },
         data: {
           status: "PROPOSED_MULTI",
-          message: `Možní kandidáti: ${bestCandidates.map((c) => c.number).join(", ")}`,
         },
       });
     }

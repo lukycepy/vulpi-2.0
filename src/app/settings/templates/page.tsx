@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 
 export default async function TemplatesPage() {
   const user = await getCurrentUser();
+  if (!user) return <div>Please log in.</div>;
   
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id }
@@ -44,7 +45,7 @@ export default async function TemplatesPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {templates.map((template) => (
+        {templates.map((template: any) => (
           <Card key={template.id}>
             <CardHeader>
               <CardTitle>{template.name}</CardTitle>

@@ -78,9 +78,9 @@ export default async function ProjectsPage() {
             </p>
           </div>
         ) : (
-          projects.map((project) => {
+          projects.map((project: any) => {
             // Calculations
-            const totalTimeSeconds = project.timeEntries.reduce((sum, entry) => {
+            const totalTimeSeconds = project.timeEntries.reduce((sum: number, entry: any) => {
               // Calculate duration if not present (for running timer, use current time - not ideal for static page but ok)
               // For simplicity, use stored duration or diff if endTime exists
               let duration = entry.duration || 0;
@@ -95,12 +95,12 @@ export default async function ProjectsPage() {
             
             // Revenue from invoices
             const revenue = project.invoices
-              .filter(inv => inv.status === "PAID")
-              .reduce((sum, inv) => sum + inv.totalAmount, 0);
+              .filter((inv: any) => inv.status === "PAID")
+              .reduce((sum: number, inv: any) => sum + inv.totalAmount, 0);
               
             // Expenses linked to project
             const expenses = project.expenses
-              .reduce((sum, exp) => sum + exp.amount, 0);
+              .reduce((sum: number, exp: any) => sum + exp.amount, 0);
               
             const profit = revenue - expenses;
             const margin = revenue > 0 ? (profit / revenue) * 100 : 0;

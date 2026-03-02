@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { InvoiceTemplate } from "@prisma/client";
+import { InvoiceTemplate } from "@/types";
 import { createInvoiceTemplate, updateInvoiceTemplate } from "@/actions/templates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,16 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
     setLoading(true);
     try {
       if (initialTemplate) {
-        await updateInvoiceTemplate(initialTemplate.id, template);
+        await updateInvoiceTemplate(initialTemplate.id, {
+          name: template.name || undefined,
+          primaryColor: template.primaryColor || undefined,
+          secondaryColor: template.secondaryColor || undefined,
+          fontFamily: template.fontFamily || undefined,
+          logoPosition: template.logoPosition || undefined,
+          showQrCode: template.showQrCode,
+          showSignature: template.showSignature,
+          customCss: template.customCss || undefined,
+        });
         toast({ title: "Úspěch", description: "Šablona byla aktualizována." });
       } else {
         await createInvoiceTemplate({
@@ -137,7 +146,7 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
               <Label htmlFor="fontFamily">Písmo</Label>
               <Select 
                 value={template.fontFamily || "Inter"} 
-                onValueChange={(value) => setTemplate({ ...template, fontFamily: value })}
+                onValueChange={(value: string) => setTemplate({ ...template, fontFamily: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -157,7 +166,7 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
               <Label htmlFor="logoPosition">Pozice loga</Label>
               <Select 
                 value={template.logoPosition || "left"} 
-                onValueChange={(value) => setTemplate({ ...template, logoPosition: value })}
+                onValueChange={(value: string) => setTemplate({ ...template, logoPosition: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -210,7 +219,7 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
               className="bg-white shadow-lg p-8 min-h-[600px] text-sm flex flex-col gap-6"
               style={{
                 fontFamily: template.fontFamily || 'inherit',
-                borderTop: `4px solid ${template.primaryColor}`,
+                borderTop: `4px solid ${template.primaryColor || '#000'}`,
               }}
             >
               {/* Header */}
@@ -219,7 +228,7 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
                   LOGO
                 </div>
                 <div className="text-right">
-                  <h1 className="text-2xl font-bold" style={{ color: template.primaryColor }}>FAKTURA</h1>
+                  <h1 className="text-2xl font-bold" style={{ color: template.primaryColor || '#000' }}>FAKTURA</h1>
                   <p className="text-gray-500">#2024001</p>
                 </div>
               </div>
@@ -262,7 +271,7 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
               <div className="mt-4">
                 <table className="w-full">
                   <thead>
-                    <tr style={{ color: template.primaryColor, borderBottom: `2px solid ${template.secondaryColor}` }}>
+                    <tr style={{ color: template.primaryColor || '#000', borderBottom: `2px solid ${template.secondaryColor || '#fff'}` }}>
                       <th className="text-left py-2">Položka</th>
                       <th className="text-right py-2">Množství</th>
                       <th className="text-right py-2">Cena/j</th>
@@ -286,7 +295,7 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
                   <tfoot>
                     <tr>
                       <td colSpan={3} className="text-right py-4 font-bold">Celkem k úhradě:</td>
-                      <td className="text-right py-4 font-bold text-lg" style={{ color: template.primaryColor }}>21 000 Kč</td>
+                      <td className="text-right py-4 font-bold text-lg" style={{ color: template.primaryColor || '#000' }}>21 000 Kč</td>
                     </tr>
                   </tfoot>
                 </table>

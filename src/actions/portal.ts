@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
+import { getCurrentUser, hasPermission } from "@/lib/auth-permissions"
 
 export async function verifyClientAccess(formData: FormData) {
   const accessCode = formData.get("accessCode") as string
@@ -81,7 +82,11 @@ export async function getClientInvoices(clientId: string) {
         issuedAt: 'desc'
       },
       include: {
-        items: true
+        items: true,
+        organization: true,
+        bankDetail: true,
+        client: true,
+        template: true,
       }
     })
     return invoices
@@ -99,27 +104,62 @@ export async function createDispute(invoiceId: string, message: string) {
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { client: true }
-    })
+    });
 
-    if (!invoice) throw new Error("Faktura nenalezena")
-    
-    if (invoice.clientId !== client.id) {
-      throw new Error("Unauthorized access to invoice");
+    if (!invoice || invoice.clientId !== client.id) {
+      throw new Error("Unauthorized");
     }
 
     await prisma.dispute.create({
       data: {
         invoiceId,
-        clientId: invoice.clientId,
+        clientId: client.id,
         message,
         status: "OPEN"
       }
-    })
-    
-    return { success: true, message: "Reklamace byla odeslána ke zpracování." }
+    });
+
+    revalidatePath(`/portal/invoices/${invoiceId}`);
+    return { success: true, message: "Reklamace byla odeslána ke zpracování." };
   } catch (error) {
-    console.error("Dispute error:", error)
-    return { success: false, message: "Chyba při odesílání reklamace." }
+    console.error("Error creating dispute:", error);
+    return { success: false, message: "Chyba při odesílání reklamace." };
+  }
+}
+
+export async function payInvoice(invoiceId: string) {
+  try {
+    const client = await getClientFromToken();
+    if (!client) throw new Error("Unauthorized");
+
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { client: true }
+    });
+
+    if (!invoice || invoice.clientId !== client.id) {
+      throw new Error("Unauthorized");
+    }
+
+    // TODO: Stripe/GoPay integration
+    // const paymentIntent = await stripe.paymentIntents.create({...})
+
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: "PAID",
+        paidAmount: invoice.totalAmount, // Full payment
+        paidAt: new Date(),
+        overpaymentAmount: 0
+      } as any
+    });
+
+    revalidatePath(`/portal/invoices/${invoiceId}`);
+    revalidatePath(`/portal`); // Update list as well
+    return { success: true };
+  } catch (error) {
+    console.error("Error paying invoice:", error);
+    return { success: false, error: "Platba selhala" };
   }
 }
 

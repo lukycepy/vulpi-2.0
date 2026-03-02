@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 
 export default async function CustomFieldsPage() {
   const user = await getCurrentUser();
+  if (!user) return <div>Please log in.</div>;
   
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id }

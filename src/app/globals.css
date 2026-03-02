@@ -88,3 +88,54 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  /* Hide navigation, header, sidebar, buttons */
+  nav,
+  header,
+  aside,
+  button,
+  .no-print,
+  [role="button"],
+  .fixed,
+  .sticky,
+  .bottom-nav {
+    display: none !important;
+  }
+
+  /* Reset body/layout for print */
+  body,
+  main,
+  .container {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* Ensure content is visible */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Hide scrollbars */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Page breaks */
+  .page-break {
+    page-break-before: always;
+  }
+  
+  /* Hide specific UI elements that might not be caught by generic tags */
+  .impersonation-banner,
+  .toaster {
+    display: none !important;
+  }
+}

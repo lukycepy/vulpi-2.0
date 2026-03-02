@@ -14,9 +14,10 @@ import { useRouter } from "next/navigation";
 interface CustomFieldManagerProps {
   initialFields: CustomFieldDefinition[];
   organizationId: string;
+  targetModel?: "INVOICE" | "CLIENT" | "PROJECT";
 }
 
-export function CustomFieldManager({ initialFields, organizationId }: CustomFieldManagerProps) {
+export function CustomFieldManager({ initialFields, organizationId, targetModel = "INVOICE" }: CustomFieldManagerProps) {
   const [fields, setFields] = useState<CustomFieldDefinition[]>(initialFields);
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export function CustomFieldManager({ initialFields, organizationId }: CustomFiel
     try {
       await createCustomFieldDefinition({
         organizationId,
+        targetModel,
         ...formData,
         type: formData.type as "TEXT" | "NUMBER" | "DATE" | "BOOLEAN",
       });

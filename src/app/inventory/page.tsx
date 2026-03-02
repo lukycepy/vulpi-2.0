@@ -125,7 +125,11 @@ export default async function InventoryPage() {
                         
                       return (
                         <tr key={product.id} className="hover:bg-muted/5 transition-colors">
-                          <td className="px-4 py-3 font-medium">{product.name}</td>
+                          <td className="px-4 py-3 font-medium">
+                            <Link href={`/inventory/products/${product.id}`} className="hover:underline text-primary font-semibold">
+                              {product.name}
+                            </Link>
+                          </td>
                           <td className="px-4 py-3 text-muted-foreground text-xs font-mono">
                             {product.sku || product.ean || "—"}
                           </td>

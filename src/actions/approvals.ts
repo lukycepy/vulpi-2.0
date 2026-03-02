@@ -6,14 +6,25 @@ import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 
 export async function approveInvoice(requestId: string, note?: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const request = await prisma.approvalRequest.findUnique({
     where: { id: requestId },
-    include: { invoice: true }
   });
 
   if (!request) throw new Error("Request not found");
 
-  const canApprove = await hasPermission(user.id, request.invoice.organizationId, "approve_invoices");
+  if (request.entityType !== "INVOICE") {
+    throw new Error("Tento požadavek není pro fakturu.");
+  }
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: request.entityId },
+  });
+
+  if (!invoice) throw new Error("Faktura nenalezena.");
+
+  const canApprove = await hasPermission(user.id, invoice.organizationId, "approve_invoices");
   if (!canApprove) {
     throw new Error("Nemáte oprávnění schvalovat faktury.");
   }
@@ -24,11 +35,11 @@ export async function approveInvoice(requestId: string, note?: string) {
       data: {
         status: "APPROVED",
         approverId: user.id,
-        note
+        comment: note
       }
     }),
     prisma.invoice.update({
-      where: { id: request.invoiceId },
+      where: { id: invoice.id },
       data: {
         status: "ISSUED" 
       }
@@ -41,14 +52,25 @@ export async function approveInvoice(requestId: string, note?: string) {
 
 export async function rejectInvoice(requestId: string, note?: string) {
   const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
   const request = await prisma.approvalRequest.findUnique({
     where: { id: requestId },
-    include: { invoice: true }
   });
 
   if (!request) throw new Error("Request not found");
 
-  const canApprove = await hasPermission(user.id, request.invoice.organizationId, "approve_invoices");
+  if (request.entityType !== "INVOICE") {
+    throw new Error("Tento požadavek není pro fakturu.");
+  }
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: request.entityId },
+  });
+
+  if (!invoice) throw new Error("Faktura nenalezena.");
+
+  const canApprove = await hasPermission(user.id, invoice.organizationId, "approve_invoices");
   if (!canApprove) {
     throw new Error("Nemáte oprávnění zamítat faktury.");
   }
@@ -59,11 +81,11 @@ export async function rejectInvoice(requestId: string, note?: string) {
       data: {
         status: "REJECTED",
         approverId: user.id,
-        note
+        comment: note
       }
     }),
     prisma.invoice.update({
-      where: { id: request.invoiceId },
+      where: { id: invoice.id },
       data: {
         status: "DRAFT" 
       }
