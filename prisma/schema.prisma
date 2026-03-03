@@ -44,6 +44,13 @@ model Organization {
   // Phase 30: Math
   roundingRule       String       @default("MATH_2")      // "MATH_2", "CEIL_0", "MATH_0"
 
+  // Phase 31: SMTP
+  smtpHost           String?
+  smtpPort           Int?
+  smtpUser           String?
+  smtpPassword       String?      // Encrypted? Ideally yes.
+  smtpFrom           String?
+
   members      Membership[]
   auditLogs    AuditLog[]
   clients      Client[]
@@ -70,6 +77,7 @@ model Organization {
   customFields     CustomFieldDefinition[]
   roleDefinitions  RoleDefinition[] // Custom roles (RBAC)
   contracts        Contract[]
+  clientTags       ClientTag[]
 
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -127,6 +135,7 @@ model Dispute {
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
+  username     String?      @unique // New field for dual login
   passwordHash String
   firstName    String?
   lastName     String?
@@ -279,9 +288,25 @@ model Client {
   establishedDate DateTime?   // Marketing: Anniversary / Birthday
   disputes       Dispute[]
   contracts      Contract[]
+  tags           ClientTag[]
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+}
+
+model ClientTag {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  color          String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  clients        Client[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  @@unique([organizationId, name])
 }
 
 model Invoice {

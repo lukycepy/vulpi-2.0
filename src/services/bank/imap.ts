@@ -58,13 +58,14 @@ export async function syncImapBank(integration: any) {
                 const parsed = await simpleParser(message.source);
                 const text = parsed.text || "";
                 const subject = parsed.subject || "";
-                const from = parsed.from?.text || "";
+                const fromObj = message.envelope?.from?.[0];
+                const from = fromObj?.address || parsed.from?.text || "";
 
                 // Basic validation - check if it looks like a bank email
                 // This is heuristics. User should probably configure sender filter.
                 // For now, we try to parse and if we find Amount and VS, we assume it is a bank email.
                 
-                const movement = parseBankEmail(text, subject, from, message.envelope.messageId);
+                const movement = parseBankEmail(text, subject, from, message.envelope?.messageId || message.uid.toString());
                 
                 if (movement) {
                     movements.push(movement);

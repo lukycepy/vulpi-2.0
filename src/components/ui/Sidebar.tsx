@@ -18,7 +18,6 @@ import {
   ChevronRight,
   ExternalLink
 } from "lucide-react";
-import { RecentItems } from "@/components/ui/RecentItems";
 
 interface SidebarProps {
   permissions: string[];
@@ -102,8 +101,6 @@ export function Sidebar({ permissions }: SidebarProps) {
       </nav>
 
       <div className="p-2 border-t space-y-2">
-        <RecentItems isCollapsed={isCollapsed} />
-        
         <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="flex items-center justify-center w-full p-2 rounded-md hover:bg-muted text-muted-foreground transition-colors"

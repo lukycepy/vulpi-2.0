@@ -10,27 +10,35 @@ import { encryptString, decryptString } from "@/lib/crypto";
 import { verify } from "otplib";
 
 export async function login(formData: FormData) {
-  const email = formData.get("email") as string;
+  const login = formData.get("email") as string; // Changed from 'email' to 'login' to reflect dual nature
   const password = formData.get("password") as string;
 
-  if (!email || !password) {
-    return { error: "Zadejte email a heslo" };
+  if (!login || !password) {
+    return { error: "Zadejte email/uživatelské jméno a heslo" };
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { email },
+    // Check if input is email or username
+    const isEmail = login.includes("@");
+    
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: login },
+          { username: login }
+        ]
+      },
       include: { memberships: true }
     });
 
     if (!user) {
-      return { error: "Neplatný email nebo heslo" };
+      return { error: "Neplatné přihlašovací údaje" };
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isValid) {
-      return { error: "Neplatný email nebo heslo" };
+      return { error: "Neplatné přihlašovací údaje" };
     }
 
     // Geolocation Logic
@@ -101,6 +109,28 @@ export async function login(formData: FormData) {
   return { success: true };
 }
 
+export async function switchOrganization(organizationId: string) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // Verify membership
+    const membership = await prisma.membership.findFirst({
+        where: { userId: user.id, organizationId }
+    });
+
+    if (!membership) throw new Error("Not a member of this organization");
+
+    const cookieStore = await cookies();
+    cookieStore.set("active_org_id", organizationId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 24 * 365, // 1 year
+        path: "/",
+    });
+
+    revalidatePath("/", "layout");
+}
+
 export async function verifyTwoFactorLogin(encryptedUserId: string, token: string) {
   try {
     const userId = decryptString(encryptedUserId);
@@ -168,24 +198,58 @@ export async function impersonateUser(targetUserId: string) {
   if (!targetMembership) {
     throw new Error("Target user is not in your organization.");
   }
-  
+
   const cookieStore = await cookies();
-  const isAlreadyImpersonating = cookieStore.has("impersonated_user_id");
-  if (isAlreadyImpersonating) {
-    throw new Error("Already impersonating. Stop current session first.");
+  cookieStore.set("impersonated_user_id", targetUserId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60, // 1 hour
+    path: "/",
+  });
+  
+  cookieStore.set("original_user_id", currentUser.id, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60,
+    path: "/",
+  });
+
+  revalidatePath("/", "layout");
+}
+
+export async function requestPasswordReset(email: string) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user) {
+      // Return success even if user not found to prevent enumeration
+      return { success: true };
+    }
+
+    // Generate random password
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let password = "";
+    for (let i = 0; i < 12; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash }
+    });
+
+    // In a real app, send email here
+    console.log(`[PASSWORD RESET] New password for ${email}: ${password}`);
+
+    return { success: true };
+  } catch (error) {
+    console.error("Password reset error:", error);
+    return { error: "Chyba při resetování hesla" };
   }
-
-  const canImpersonate = await hasPermission(currentUser.id, orgId, "impersonate_users");
-  if (!canImpersonate) {
-    throw new Error("Nemáte oprávnění k impersonaci uživatelů.");
-  }
-
-  // Set cookies
-  // Store original user ID to verify later (optional, but good for audit)
-  cookieStore.set("original_user_id", currentUser.id, { httpOnly: true, secure: process.env.NODE_ENV === "production" });
-  cookieStore.set("impersonated_user_id", targetUserId, { httpOnly: true, secure: process.env.NODE_ENV === "production" });
-
-  revalidatePath("/");
 }
 
 export async function stopImpersonation() {

@@ -347,11 +347,43 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
       if (rawValue) {
           const evaluated = evaluateMath(rawValue);
           if (evaluated !== null) {
-              updateItem(index, field, evaluated);
-              // Also update the raw value to show the result
-              updateItem(index, field === 'quantity' ? 'quantityRaw' : 'unitPriceRaw', evaluated.toString());
+              // Update both the numeric value and the raw value to show result
+              // Important: we need to trigger updateItem logic which handles recalculation
+              
+              // First update raw to be clean number string
+              const newItems = [...items];
+              const newItem = { ...newItems[index] };
+              
+              if (field === 'quantity') {
+                  newItem.quantity = evaluated;
+                  newItem.quantityRaw = evaluated.toString();
+              } else {
+                  newItem.unitPrice = evaluated;
+                  newItem.unitPriceRaw = evaluated.toString();
+              }
+              
+              // Recalculate totals
+              const qty = Number(newItem.quantity);
+              const price = Number(newItem.unitPrice);
+              const discount = Number(newItem.discount);
+              const vatRate = Number(newItem.vatRate);
+              
+              if (formData.isVatInclusive) {
+                  const totalWithVat = qty * price;
+                  const discountAmount = totalWithVat * (discount / 100);
+                  const totalWithVatAfterDiscount = totalWithVat - discountAmount;
+                  newItem.totalAmount = totalWithVatAfterDiscount / (1 + vatRate / 100);
+              } else {
+                  const base = qty * price;
+                  const discountAmount = base * (discount / 100);
+                  newItem.totalAmount = base - discountAmount;
+              }
+
+              newItems[index] = newItem;
+              setItems(newItems);
+              setIsDirty(true);
           } else {
-              // Revert to current numeric value
+              // Invalid input, revert to last valid numeric value
               updateItem(index, field === 'quantity' ? 'quantityRaw' : 'unitPriceRaw', item[field].toString());
           }
       }
@@ -408,16 +440,17 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
         const result = await createInvoice(payload);
         
         // Check for calendar url
-        if (typeof result === 'object' && 'calendarUrl' in result && result.calendarUrl) {
+        const res = result as any;
+        if (typeof res === 'object' && res.calendarUrl) {
             if (window.confirm("Faktura vytvořena. Chcete přidat splatnost do Google Kalendáře?")) {
-                window.open(result.calendarUrl as string, "_blank");
+                window.open(res.calendarUrl as string, "_blank");
             }
         }
 
         // Check for milestone in result (if object returned)
-        if (typeof result === 'object' && 'milestoneReached' in result && result.milestoneReached) {
+        if (typeof res === 'object' && res.milestoneReached) {
            triggerCelebration();
-           alert(`Gratulujeme! Právě jste vystavili svou ${result.milestoneCount}. fakturu ve Vulpi!`);
+           alert(`Gratulujeme! Právě jste vystavili svou ${res.milestoneCount}. fakturu ve Vulpi!`);
         } else {
            triggerTailWag();
         }
@@ -828,10 +861,11 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
                           <td className="p-2 align-middle relative group">
                             <input 
                               type="text"
-                              value={item.quantityRaw ?? item.quantity}
-                              onChange={e => updateItem(index, "quantityRaw", e.target.value)}
+                              value={item.quantityRaw || item.quantity}
+                              onChange={(e) => updateItem(index, 'quantityRaw', e.target.value)}
                               onBlur={() => handleInputBlur(index, 'quantity')}
-                              className="w-full px-2 py-1 rounded border bg-transparent"
+                              className="w-16 h-8 px-2 py-1 text-right border rounded"
+                              placeholder="Množ."
                             />
                             <Calculator className="h-3 w-3 absolute right-3 top-1/2 -translate-y-1/2 opacity-20 group-hover:opacity-100 pointer-events-none" />
                           </td>
@@ -858,7 +892,8 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
                               value={item.unitPriceRaw ?? item.unitPrice}
                               onChange={e => updateItem(index, "unitPriceRaw", e.target.value)}
                               onBlur={() => handleInputBlur(index, 'unitPrice')}
-                              className="w-full px-2 py-1 rounded border bg-transparent"
+                              className="w-24 h-8 px-2 py-1 text-right border rounded"
+                              placeholder="Cena"
                             />
                             <Calculator className="h-3 w-3 absolute right-3 top-1/2 -translate-y-1/2 opacity-20 group-hover:opacity-100 pointer-events-none" />
                           </td>

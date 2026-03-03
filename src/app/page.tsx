@@ -14,7 +14,7 @@ import { NetProfitWidget } from "@/components/dashboard/NetProfitWidget";
 import { FoxTip } from "@/components/fox/FoxTip";
 import { ForgottenInvoicesAlert } from "@/components/dashboard/ForgottenInvoicesAlert";
 import { ExpiringContractsWidget } from "@/components/dashboard/ExpiringContractsWidget";
-import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
+import { getCurrentUser, hasPermission, getCurrentMembership } from "@/lib/auth-permissions";
 import { redirect } from "next/navigation";
 
 import { DashboardPreferencesWidget } from "@/components/dashboard/DashboardPreferencesWidget";
@@ -28,14 +28,13 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const membership = await prisma.membership.findFirst({
-    where: { userId: user.id },
-  });
+  const params = await searchParams;
+  const membership = await getCurrentMembership(user.id);
 
   if (!membership) {
     return <div>Nejste členem žádné organizace. Prosím spusťte seed script.</div>;

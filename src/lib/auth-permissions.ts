@@ -23,9 +23,6 @@ export async function getCurrentUser() {
     
     // Check if user is blocked
     if (user?.isBlocked) {
-        // We should clear the cookie if blocked
-        // But we are in a server function, cannot set cookies easily unless it's a Server Action or Middleware
-        // For now, we return null, effectively logging them out in the eyes of the app
         return null;
     }
 
@@ -33,6 +30,29 @@ export async function getCurrentUser() {
   } catch (e) {
     return null;
   }
+}
+
+export async function getCurrentMembership(userId: string) {
+    const cookieStore = await cookies();
+    const activeOrgId = cookieStore.get("active_org_id")?.value;
+
+    let membership = null;
+
+    if (activeOrgId) {
+        membership = await prisma.membership.findFirst({
+            where: { userId, organizationId: activeOrgId },
+            include: { organization: true }
+        });
+    }
+
+    if (!membership) {
+        membership = await prisma.membership.findFirst({
+            where: { userId },
+            include: { organization: true }
+        });
+    }
+
+    return membership;
 }
 
 export async function isImpersonating() {

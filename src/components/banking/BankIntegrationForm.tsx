@@ -34,11 +34,16 @@ export function BankIntegrationForm({ organizationId, existingIntegration = fals
     setLoading(true);
 
     try {
-      await saveImapIntegration({
+      const result = await saveImapIntegration({
         ...formData,
         port: Number(formData.port),
         organizationId
       });
+
+      // Handle potential returned error from action
+      if (typeof result === 'object' && 'error' in result && result.error) {
+          throw new Error(result.error);
+      }
 
       toast({
         title: "Banka úspěšně napojena",
@@ -52,7 +57,7 @@ export function BankIntegrationForm({ organizationId, existingIntegration = fals
     } catch (error: any) {
       toast({
         title: "Chyba při ukládání",
-        description: error.message,
+        description: error.message || "Nepodařilo se uložit nastavení.",
         variant: "destructive",
       });
     } finally {

@@ -16,58 +16,63 @@ interface ImapIntegrationData {
 }
 
 export async function saveImapIntegration(data: ImapIntegrationData) {
-  const user = await getCurrentUser();
-  if (!user) {
-    throw new Error("Nejste přihlášen");
-  }
-
-  // Verify permission
-  const hasAccess = await hasPermission(user.id, data.organizationId, "manage_settings");
-  if (!hasAccess) {
-    throw new Error("Nemáte oprávnění spravovat integrace");
-  }
-
-  // Format: user@domain.com|imap.server.com|993
-  const connectionString = `${data.email}|${data.server}|${data.port}`;
-  
-  const encryptedKey = encryptString(connectionString);
-  const encryptedToken = encryptString(data.password);
-
-  // Check if integration already exists
-  const existing = await prisma.bankIntegration.findFirst({
-    where: {
-      organizationId: data.organizationId,
-      provider: "IMAP",
-      isActive: true
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      throw new Error("Nejste přihlášen");
     }
-  });
 
-  if (existing) {
-    // Update existing
-    await prisma.bankIntegration.update({
-      where: { id: existing.id },
-      data: {
-        encryptedKey,
-        encryptedToken,
-        updatedAt: new Date()
-      }
-    });
-  } else {
-    // Create new
-    await prisma.bankIntegration.create({
-      data: {
+    // Verify permission
+    const hasAccess = await hasPermission(user.id, data.organizationId, "manage_settings");
+    if (!hasAccess) {
+      throw new Error("Nemáte oprávnění spravovat integrace");
+    }
+
+    // Format: user@domain.com|imap.server.com|993
+    const connectionString = `${data.email}|${data.server}|${data.port}`;
+    
+    const encryptedKey = encryptString(connectionString);
+    const encryptedToken = encryptString(data.password);
+
+    // Check if integration already exists
+    const existing = await prisma.bankIntegration.findFirst({
+      where: {
         organizationId: data.organizationId,
         provider: "IMAP",
-        encryptedKey,
-        encryptedToken,
-        isActive: true,
-        lastSyncAt: new Date() // Initialize last sync
+        isActive: true
       }
     });
-  }
 
-  revalidatePath("/settings/integrations");
-  return { success: true };
+    if (existing) {
+      // Update existing
+      await prisma.bankIntegration.update({
+        where: { id: existing.id },
+        data: {
+          encryptedKey,
+          encryptedToken,
+          updatedAt: new Date()
+        }
+      });
+    } else {
+      // Create new
+      await prisma.bankIntegration.create({
+        data: {
+          organizationId: data.organizationId,
+          provider: "IMAP",
+          encryptedKey,
+          encryptedToken,
+          isActive: true,
+          lastSyncAt: new Date() // Initialize last sync
+        }
+      });
+    }
+
+    revalidatePath("/settings/integrations");
+    return { success: true };
+  } catch (error) {
+    console.error("Save IMAP Integration Error:", error);
+    return { error: error instanceof Error ? error.message : "Chyba při ukládání integrace" };
+  }
 }
 
 export async function getBankMovements(organizationId: string) {
@@ -79,7 +84,7 @@ export async function getBankMovements(organizationId: string) {
 
     return await prisma.bankMovement.findMany({
         where: {
-            integration: { organizationId }
+            bankIntegration: { organizationId }
         },
         orderBy: { date: 'desc' },
         take: 100 // Limit for now
@@ -104,11 +109,11 @@ export async function confirmMatch(movementId: string, invoiceId: string) {
 
     const movement = await prisma.bankMovement.findUnique({ 
         where: { id: movementId },
-        include: { integration: true }
+        include: { bankIntegration: true }
     });
-    if (!movement) throw new Error("Movement not found");
+    if (!movement || !movement.bankIntegration) throw new Error("Movement not found");
 
-    const hasAccess = await hasPermission(user.id, movement.integration.organizationId, "manage_invoices");
+    const hasAccess = await hasPermission(user.id, movement.bankIntegration.organizationId, "manage_invoices");
     if (!hasAccess) throw new Error("Permission denied");
 
     await prisma.$transaction([
@@ -133,11 +138,11 @@ export async function ignoreMovement(movementId: string) {
 
     const movement = await prisma.bankMovement.findUnique({ 
         where: { id: movementId },
-        include: { integration: true }
+        include: { bankIntegration: true }
     });
-    if (!movement) throw new Error("Movement not found");
+    if (!movement || !movement.bankIntegration) throw new Error("Movement not found");
 
-    const hasAccess = await hasPermission(user.id, movement.integration.organizationId, "manage_invoices");
+    const hasAccess = await hasPermission(user.id, movement.bankIntegration.organizationId, "manage_invoices");
     if (!hasAccess) throw new Error("Permission denied");
 
     await prisma.bankMovement.update({
@@ -153,11 +158,11 @@ export async function unmatchMovement(movementId: string) {
 
     const movement = await prisma.bankMovement.findUnique({ 
         where: { id: movementId },
-        include: { integration: true }
+        include: { bankIntegration: true }
     });
-    if (!movement) throw new Error("Movement not found");
+    if (!movement || !movement.bankIntegration) throw new Error("Movement not found");
 
-    const hasAccess = await hasPermission(user.id, movement.integration.organizationId, "manage_invoices");
+    const hasAccess = await hasPermission(user.id, movement.bankIntegration.organizationId, "manage_invoices");
     if (!hasAccess) throw new Error("Permission denied");
 
     await prisma.bankMovement.update({

@@ -45,7 +45,7 @@ export async function syncBankMovements(orgId?: string) {
 
       const existing = await prisma.bankMovement.findMany({
         where: {
-          integrationId: integration.id,
+          bankIntegrationId: integration.id,
           date: { gte: dateFrom, lte: dateTo },
         },
         select: { transactionId: true },
@@ -59,7 +59,7 @@ export async function syncBankMovements(orgId?: string) {
 
         await prisma.bankMovement.create({
           data: {
-            integrationId: integration.id,
+            bankIntegrationId: integration.id,
             transactionId: movement.transactionId,
             amount: movement.amount ?? 0,
             currency: movement.currency ?? "CZK",

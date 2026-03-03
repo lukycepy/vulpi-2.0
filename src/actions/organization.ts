@@ -24,12 +24,19 @@ export async function updateOrganization(data: {
   numberFormat?: string;
   timeFormat?: string;
   weekStart?: string;
+  roundingRule?: string;
   // Integrations
   cloudIntegrationGoogleDrive?: boolean;
   cloudIntegrationDropbox?: boolean;
   cloudIntegrationOneDrive?: boolean;
   googleCalendarIntegration?: boolean;
   notificationWebhookUrl?: string;
+  // SMTP
+  smtpHost?: string;
+  smtpPort?: string | number;
+  smtpUser?: string;
+  smtpPassword?: string;
+  smtpFrom?: string;
 }) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
@@ -54,7 +61,30 @@ export async function updateOrganization(data: {
 
   await prisma.organization.update({
     where: { id: orgId },
-    data,
+    data: {
+      name: data.name,
+      taxId: data.taxId,
+      vatId: data.vatId,
+      vatPayerStatus: data.vatPayerStatus,
+      defaultVatMode: data.defaultVatMode,
+      address: data.address,
+      web: data.web,
+      email: data.email,
+      phone: data.phone,
+      isLegalHold: data.isLegalHold,
+      defaultGdprClause: data.defaultGdprClause,
+      defaultSlaText: data.defaultSlaText,
+      christmasMode: data.christmasMode,
+      numberFormat: data.numberFormat,
+      timeFormat: data.timeFormat,
+      weekStart: data.weekStart,
+      roundingRule: data.roundingRule,
+      smtpHost: data.smtpHost,
+      smtpPort: data.smtpPort ? parseInt(data.smtpPort.toString()) : undefined,
+      smtpUser: data.smtpUser,
+      smtpPassword: data.smtpPassword, // Should be encrypted in real app or handled securely
+      smtpFrom: data.smtpFrom,
+    },
   });
 
   revalidatePath("/settings/organization");

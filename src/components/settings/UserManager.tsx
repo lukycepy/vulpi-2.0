@@ -29,7 +29,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, UserPlus, Search, LogIn, Loader2 } from "lucide-react";
+import { Trash2, UserPlus, Search, LogIn, Loader2, Lock } from "lucide-react";
+import { adminResetPassword } from "@/actions/admin-users";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
@@ -92,6 +93,25 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
       toast({ title: "Role změněna", description: "Uživatelská role byla aktualizována." });
     } catch (error) {
       toast({ title: "Chyba", description: "Nepodařilo se změnit roli.", variant: "destructive" });
+    }
+  };
+
+  const handleResetPassword = async (userId: string) => {
+    if (!confirm("Opravdu chcete vyresetovat heslo tomuto uživateli?")) return;
+
+    const orgId = memberships[0]?.organizationId;
+    if (!orgId) {
+        toast({ title: "Chyba", description: "Organizace nenalezena.", variant: "destructive" });
+        return;
+    }
+    
+    try {
+        const result = await adminResetPassword(userId, orgId);
+        if (result.success) {
+            alert(`Heslo bylo resetováno. Nové heslo: ${result.password}\n\n(V produkci by bylo odesláno na email)`);
+        }
+    } catch (error: any) {
+        toast({ title: "Chyba", description: error.message, variant: "destructive" });
     }
   };
 
@@ -185,6 +205,14 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
                             <LogIn className="h-4 w-4 text-blue-600" />
                         </Button>
                     )}
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleResetPassword(membership.user.id)} 
+                        title="Resetovat heslo"
+                    >
+                        <Lock className="h-4 w-4" />
+                    </Button>
                     <Button 
                         variant="ghost" 
                         size="icon" 

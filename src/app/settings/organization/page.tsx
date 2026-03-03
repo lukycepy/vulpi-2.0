@@ -1,3 +1,4 @@
+import { BankIntegrationSection } from "@/components/banking/BankIntegrationSection";
 import { prisma } from "@/lib/prisma";
 import {
   updateOrganization,
@@ -235,6 +236,70 @@ export default async function OrganizationSettings() {
               </div>
             </div>
 
+            <div className="border-t pt-4 mt-4">
+              <h3 className="text-lg font-medium mb-4">SMTP Nastavení (E-maily)</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Nastavte vlastní SMTP server pro odesílání faktur z vaší domény.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-sm font-medium">SMTP Host</span>
+                  <input 
+                    name="smtpHost" 
+                    // @ts-ignore - Field might be missing in schema but needed for UI
+                    defaultValue={org.smtpHost || ""} 
+                    placeholder="smtp.example.com" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" 
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium">SMTP Port</span>
+                  <input 
+                    name="smtpPort" 
+                    type="number"
+                    // @ts-ignore
+                    defaultValue={org.smtpPort || "587"} 
+                    placeholder="587" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" 
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label className="block">
+                  <span className="text-sm font-medium">SMTP Uživatel</span>
+                  <input 
+                    name="smtpUser" 
+                    // @ts-ignore
+                    defaultValue={org.smtpUser || ""} 
+                    placeholder="info@mojefirma.cz" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" 
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium">SMTP Heslo</span>
+                  <input 
+                    name="smtpPassword" 
+                    type="password"
+                    placeholder="••••••••" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" 
+                  />
+                </label>
+              </div>
+              <div className="mt-4">
+                 <label className="block">
+                  <span className="text-sm font-medium">Odesílatel (From)</span>
+                  <input 
+                    name="smtpFrom" 
+                    // @ts-ignore
+                    defaultValue={org.smtpFrom || ""} 
+                    placeholder="Fakturace <faktury@mojefirma.cz>" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" 
+                  />
+                </label>
+              </div>
+            </div>
+
             <button type="submit" className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md w-fit mt-2">Uložit změny</button>
           </form>
         </section>
@@ -366,45 +431,7 @@ export default async function OrganizationSettings() {
               </div>
             ))}
 
-            <div className="border-t pt-4 mt-4">
-              <h3 className="text-sm font-medium mb-3">Přidat integraci</h3>
-              <form
-                action={async (formData) => {
-                  "use server";
-                  await addBankIntegration({
-                    provider: formData.get("provider") as string,
-                    token: formData.get("token") as string,
-                    key: (formData.get("key") as string) || undefined,
-                  });
-                }}
-                className="grid gap-4"
-              >
-                <div className="grid grid-cols-2 gap-4">
-                  <select
-                    name="provider"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    defaultValue="FIO"
-                  >
-                    <option value="FIO">Fio banka</option>
-                    <option value="RB">Raiffeisenbank</option>
-                  </select>
-                  <input
-                    name="token"
-                    placeholder="API token"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    required
-                  />
-                </div>
-                <input
-                  name="key"
-                  placeholder="Klíč / certifikát (volitelné)"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-                <button type="submit" className="bg-secondary text-secondary-foreground hover:bg-secondary/80 h-10 px-4 py-2 rounded-md w-fit">
-                  Přidat integraci
-                </button>
-              </form>
-            </div>
+            <BankIntegrationSection organizationId={org.id} />
           </div>
         </section>
 

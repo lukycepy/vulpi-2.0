@@ -3,8 +3,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getActiveTimeEntry } from "@/services/time-tracking";
 import TimerWidget from "@/components/time-tracking/TimerWidget";
-import { getCurrentUser, getUserPermissions } from "@/lib/auth-permissions";
+import { getCurrentUser, getUserPermissions, getCurrentMembership } from "@/lib/auth-permissions";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
+import { switchOrganization } from "@/actions/auth";
 import { 
   BarChart, 
   Briefcase, 
@@ -20,7 +21,8 @@ import {
   User as UserIcon,
   ShieldAlert,
   Webhook,
-  ExternalLink
+  ExternalLink,
+  Check
 } from "lucide-react";
 
 import { CoffeeBreakButton } from "@/components/ui/CoffeeBreakButton";
@@ -41,16 +43,21 @@ export default async function Header() {
   let activeTimer = null;
   let permissions: string[] = [];
   let userAvatar = null;
+  let userMemberships: any[] = [];
+  let currentMembership = null;
 
   if (user) {
     userAvatar = user.avatarUrl;
-    const membership = await prisma.membership.findFirst({
-        where: { userId: user.id }
-    });
+    currentMembership = await getCurrentMembership(user.id);
 
-    if (membership) {
-        permissions = await getUserPermissions(user.id, membership.organizationId);
+    if (currentMembership) {
+        permissions = await getUserPermissions(user.id, currentMembership.organizationId);
     }
+
+    userMemberships = await prisma.membership.findMany({
+        where: { userId: user.id },
+        include: { organization: true }
+    });
 
     const entry = await getActiveTimeEntry(user.id);
     if (entry) {
@@ -76,7 +83,7 @@ export default async function Header() {
   const canManageOCR = canManageInvoices || permissions.includes("manage_expenses");
 
   return (
-    <header className="border-b bg-background sticky top-0 z-50">
+    <header className="sticky top-0 z-40 w-full border-b bg-background">
       <div className="h-16 flex items-center justify-between px-4 md:px-8">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-8">
           <div className="md:hidden">
@@ -85,17 +92,17 @@ export default async function Header() {
                 Vulpi
              </Link>
           </div>
+
           <div className="hidden md:block">
             <Breadcrumbs />
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-
-          {activeTimer && (
-             <div className="hidden lg:block">
-                <TimerWidget initialEntry={activeTimer} userId={user?.id || ""} />
-             </div>
+          {user && (
+            <div className="hidden md:block">
+               <TimerWidget activeEntry={activeTimer} />
+            </div>
           )}
           
           <CoffeeBreakButton />
@@ -139,6 +146,25 @@ export default async function Header() {
                         <span>Bankovní integrace</span>
                     </Link>
                   </DropdownMenuItem>
+
+                  {userMemberships.length > 1 && (
+                    <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Přepnout organizaci</DropdownMenuLabel>
+                        {userMemberships.map((m) => (
+                            <DropdownMenuItem key={m.id} asChild>
+                                <form action={switchOrganization.bind(null, m.organizationId)} className="w-full cursor-pointer">
+                                    <button className="flex w-full items-center justify-between">
+                                        <span className={m.organizationId === currentMembership?.organizationId ? "font-bold" : ""}>
+                                            {m.organization.name}
+                                        </span>
+                                        {m.organizationId === currentMembership?.organizationId && <Check className="h-4 w-4 text-primary" />}
+                                    </button>
+                                </form>
+                            </DropdownMenuItem>
+                        ))}
+                    </>
+                  )}
                   
                   {canManageSettings && (
                       <>

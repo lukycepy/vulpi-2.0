@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 import { Toaster } from "@/components/ui/toaster";
 import { BottomNav } from "@/components/ui/BottomNav";
-import { getCurrentUser, getUserPermissions } from "@/lib/auth-permissions";
+import { getCurrentUser, getUserPermissions, getCurrentMembership } from "@/lib/auth-permissions";
 import { prisma } from "@/lib/prisma";
 import { ChatbotWidget } from "@/components/fox/ChatbotWidget";
 import { AutoLogout } from "@/components/AutoLogout";
@@ -44,24 +44,20 @@ export default async function RootLayout({
   const isChristmasTime = today.getMonth() === 11 && today.getDate() >= 20 && today.getDate() <= 26;
 
   if (user) {
-    const membership = await prisma.membership.findFirst({
-      where: { userId: user.id },
-      include: { organization: true }
-    });
+    const membership = await getCurrentMembership(user.id);
     
     if (membership) {
-       permissions = await getUserPermissions(user.id, membership.organizationId);
+      permissions = await getUserPermissions(user.id, membership.organizationId);
 
-       // Check chatbot permission
-       // Ideally fetch permissions properly, but keeping existing logic for chatbot
-       if (["ADMIN", "SUPERADMIN"].includes(membership.role)) {
-          showChatbot = true;
-       }
+      // Check chatbot permission
+      if (["ADMIN", "SUPERADMIN"].includes(membership.role)) {
+        showChatbot = true;
+      }
 
-       // Check snow
-       if (membership.organization.christmasMode || isChristmasTime) {
-          showSnow = true;
-       }
+      // Check snow
+      if (membership.organization?.christmasMode || isChristmasTime) {
+        showSnow = true;
+      }
     }
   } else if (isChristmasTime) {
      // Even logged out users see snow during Christmas?

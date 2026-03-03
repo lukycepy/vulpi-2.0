@@ -132,7 +132,7 @@ export async function updateInvoiceTemplate(id: string, data: any) {
     throw new Error("Nemáte oprávnění spravovat šablony.");
   }
 
-  return await (prisma as any).invoiceTemplate.update({
+  const updatedTemplate = await (prisma as any).invoiceTemplate.update({
     where: { id },
     data: {
       name: data.name,
@@ -145,68 +145,7 @@ export async function updateInvoiceTemplate(id: string, data: any) {
       customCss: data.customCss,
     },
   });
-}
-  fontFamily?: string;
-  logoPosition?: string;
-  showQrCode?: boolean;
-  showSignature?: boolean;
-  customCss?: string;
-  customFontUrl?: string;
-  textOverrides?: string;
-}) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Nejste přihlášeni.");
-  
-  const canManage = await hasPermission(user.id, data.organizationId, "manage_templates");
-  if (!canManage) {
-    throw new Error("Nemáte oprávnění spravovat šablony.");
-  }
 
-  const template = await (prisma as any).invoiceTemplate.create({
-    data: {
-      ...data,
-      logoPosition: data.logoPosition || "left",
-    },
-  });
-  
-  revalidatePath("/settings/templates");
-  return template;
-}
-
-export async function updateInvoiceTemplate(id: string, data: {
-  name?: string;
-  primaryColor?: string;
-  secondaryColor?: string;
-  fontFamily?: string;
-  logoPosition?: string;
-  showQrCode?: boolean;
-  showSignature?: boolean;
-  customCss?: string;
-  customFontUrl?: string;
-  textOverrides?: string;
-}) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Nejste přihlášeni.");
-
-  const template = await (prisma as any).invoiceTemplate.findUnique({
-    where: { id },
-    select: { organizationId: true },
-  });
-
-  if (!template) {
-    throw new Error("Šablona nenalezena.");
-  }
-
-  const canManage = await hasPermission(user.id, template.organizationId, "manage_templates");
-  if (!canManage) {
-    throw new Error("Nemáte oprávnění spravovat šablony.");
-  }
-
-  const updatedTemplate = await (prisma as any).invoiceTemplate.update({
-    where: { id },
-    data,
-  });
-  
   revalidatePath("/settings/templates");
   return updatedTemplate;
 }

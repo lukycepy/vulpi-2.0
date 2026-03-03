@@ -18,6 +18,48 @@ export async function updateAvatar(avatarUrl: string) {
   revalidatePath("/", "layout");
 }
 
+export async function updateProfile(data: any) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // Basic validation
+    if (!data.email || !data.firstName || !data.lastName) {
+        throw new Error("Missing required fields");
+    }
+
+    const updateData: any = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        username: data.username || null, // Allow clearing username
+        timezone: data.timezone,
+        avatarUrl: data.avatarUrl
+    };
+
+    if (data.password) {
+        if (data.password.length < 6) {
+            throw new Error("Heslo musí mít alespoň 6 znaků");
+        }
+        const bcrypt = await import("bcryptjs");
+        updateData.passwordHash = await bcrypt.hash(data.password, 10);
+    }
+
+    try {
+        await prisma.user.update({
+            where: { id: user.id },
+            data: updateData
+        });
+    } catch (e: any) {
+        // Handle unique constraint violation for username/email
+        if (e.code === 'P2002') {
+            throw new Error("Email nebo uživatelské jméno je již obsazeno.");
+        }
+        throw e;
+    }
+
+    revalidatePath("/", "layout");
+}
+
 export async function updateDashboardPreferences(preferences: any) {
     const user = await getCurrentUser();
     if (!user) throw new Error("Unauthorized");

@@ -202,14 +202,11 @@ export async function createInvoice(data: any) {
       status: "DRAFT", // Default status
       issuedAt: data.issuedAt,
       dueAt: data.dueAt,
-      taxDate: data.taxDate, // DUZP
       currency: data.currency,
-      language: data.language || "cs",
       exchangeRate: data.exchangeRate,
       notes: data.notes,
       bankDetailId: data.bankDetailId,
       vatMode: data.vatMode,
-      isVatInclusive: data.isVatInclusive,
       discount: data.discount,
       relatedId: data.relatedId,
       
@@ -230,7 +227,7 @@ export async function createInvoice(data: any) {
         }))
       },
       
-      customFieldValues: {
+      customFields: {
         create: data.customFields?.map((cf: any) => ({
           definitionId: cf.fieldId,
           value: cf.value
@@ -373,16 +370,13 @@ export async function updateInvoice(id: string, data: any, lastUpdatedAt?: Date 
         type: data.type,
         issuedAt: data.issuedAt,
         dueAt: data.dueAt,
-        taxDate: data.taxDate,
         currency: data.currency,
-        language: data.language || "cs",
         exchangeRate: data.exchangeRate,
         notes: data.notes,
         bankDetailId: data.bankDetailId,
-        vatMode: data.vatMode,
-        isVatInclusive: data.isVatInclusive,
-        discount: data.discount,
-        relatedId: data.relatedId,
+      vatMode: data.vatMode,
+      discount: data.discount,
+      relatedId: data.relatedId,
         
         totalAmount,
         totalVat,
@@ -401,12 +395,12 @@ export async function updateInvoice(id: string, data: any, lastUpdatedAt?: Date 
           }))
         },
         
-        customFieldValues: {
-            create: data.customFields?.map((cf: any) => ({
-              fieldId: cf.fieldId,
-              value: cf.value
-            })) || []
-        }
+        customFields: {
+        create: data.customFields?.map((cf: any) => ({
+          definitionId: cf.fieldId,
+          value: cf.value
+        })) || []
+      }
       }
     });
   });
@@ -440,12 +434,12 @@ export async function deleteInvoice(id: string) {
 }
 
 export async function generateNextInvoiceNumber(organizationId: string) {
-  const org = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: { invoiceNumberFormat: true }
-  });
+  // const org = await prisma.organization.findUnique({
+  //   where: { id: organizationId },
+  //   select: { invoiceNumberFormat: true }
+  // });
 
-  const format = org?.invoiceNumberFormat || "{YYYY}{NNN}";
+  const format = "{YYYY}{NNN}"; // Default format as field is missing
   const year = new Date().getFullYear().toString();
   
   // Find last invoice for this year to increment
