@@ -5,13 +5,17 @@ import { cn } from "@/lib/utils";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 import { Toaster } from "@/components/ui/toaster";
 import { BottomNav } from "@/components/ui/BottomNav";
-import { getCurrentUser } from "@/lib/auth-permissions";
+import { getCurrentUser, getUserPermissions } from "@/lib/auth-permissions";
 import { prisma } from "@/lib/prisma";
 import { ChatbotWidget } from "@/components/fox/ChatbotWidget";
 import { AutoLogout } from "@/components/AutoLogout";
 import { SnowEffect } from "@/components/ui/SnowEffect";
 import { TimezoneDetector } from "@/components/utils/TimezoneDetector";
 import { AnnouncementBanner } from "@/components/ui/AnnouncementBanner";
+import { Sidebar } from "@/components/ui/Sidebar";
+import Header from "@/components/Header";
+
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -34,6 +38,7 @@ export default async function RootLayout({
   const user = await getCurrentUser();
   let showChatbot = false;
   let showSnow = false;
+  let permissions: string[] = [];
 
   const today = new Date();
   const isChristmasTime = today.getMonth() === 11 && today.getDate() >= 20 && today.getDate() <= 26;
@@ -45,6 +50,8 @@ export default async function RootLayout({
     });
     
     if (membership) {
+       permissions = await getUserPermissions(user.id, membership.organizationId);
+
        // Check chatbot permission
        // Ideally fetch permissions properly, but keeping existing logic for chatbot
        if (["ADMIN", "SUPERADMIN"].includes(membership.role)) {
@@ -65,7 +72,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="cs">
+    <html lang="cs" suppressHydrationWarning>
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased pb-16 md:pb-0",
@@ -75,12 +82,29 @@ export default async function RootLayout({
         <TimezoneDetector />
         <ImpersonationBanner />
         <AnnouncementBanner />
-        {user && <AutoLogout />}
-        {showSnow && <SnowEffect />}
-        {children}
-        <BottomNav />
-        {showChatbot && <ChatbotWidget />}
-        <Toaster />
+        <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+        >
+            {user && <AutoLogout />}
+            {showSnow && <SnowEffect />}
+            
+            <div className="flex min-h-screen">
+                <Sidebar permissions={permissions} />
+                <div className="flex-1 flex flex-col min-w-0">
+                    <Header />
+                    <main className="flex-1 p-4 md:p-8">
+                        {children}
+                    </main>
+                </div>
+            </div>
+
+            <BottomNav />
+            {showChatbot && <ChatbotWidget />}
+            <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

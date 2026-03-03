@@ -312,6 +312,7 @@ model Invoice {
   discount       Float         @default(0) // Percentage discount
   totalDiscount  Float         @default(0) // Calculated total discount amount
   isLocked       Boolean       @default(false)
+  isPinned       Boolean       @default(false)
   relatedId      String?       // For Credit Notes or converted documents
   
   organization   Organization  @relation(fields: [organizationId], references: [id])

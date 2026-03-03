@@ -86,8 +86,8 @@ export default async function Home({
   const departmentFilter = isRestricted ? currentUser.department : undefined;
 
   // Parse date range from searchParams
-  const fromStr = typeof searchParams.from === 'string' ? searchParams.from : undefined;
-  const toStr = typeof searchParams.to === 'string' ? searchParams.to : undefined;
+  const fromStr = typeof params.from === 'string' ? params.from : undefined;
+  const toStr = typeof params.to === 'string' ? params.to : undefined;
   
   let dateRange: { from: Date; to: Date } | undefined;
   

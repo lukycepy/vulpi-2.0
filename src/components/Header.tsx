@@ -17,10 +17,24 @@ import {
   Settings, 
   ShoppingCart, 
   Users,
-  User as UserIcon
+  User as UserIcon,
+  ShieldAlert,
+  Webhook,
+  ExternalLink
 } from "lucide-react";
 
 import { CoffeeBreakButton } from "@/components/ui/CoffeeBreakButton";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 export default async function Header() {
   const user = await getCurrentUser();
@@ -63,75 +77,21 @@ export default async function Header() {
 
   return (
     <header className="border-b bg-background sticky top-0 z-50">
-      <div className="container mx-auto h-16 flex items-center justify-between px-4 md:px-8">
+      <div className="h-16 flex items-center justify-between px-4 md:px-8">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-8">
-          <Link href="/" className="font-bold text-xl flex items-center gap-2">
-            <span className="bg-primary text-primary-foreground p-1 rounded">V</span>
-            Vulpi
-          </Link>
+          <div className="md:hidden">
+             <Link href="/" className="font-bold text-xl flex items-center gap-2">
+                <span className="bg-primary text-primary-foreground p-1 rounded">V</span>
+                Vulpi
+             </Link>
+          </div>
           <div className="hidden md:block">
             <Breadcrumbs />
           </div>
-          
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-muted-foreground">
-            {canViewDashboard && (
-              <Link href="/" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <LayoutDashboard className="h-4 w-4" />
-                Přehled
-              </Link>
-            )}
-            {canManageInvoices && (
-              <Link href="/invoices" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <FileText className="h-4 w-4" />
-                Faktury
-              </Link>
-            )}
-            {canManageProjects && (
-              <Link href="/projects" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <Briefcase className="h-4 w-4" />
-                Projekty
-              </Link>
-            )}
-            {canManageInventory && (
-              <Link href="/inventory" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <ShoppingCart className="h-4 w-4" />
-                Sklad
-              </Link>
-            )}
-            {canManageClients && (
-              <Link href="/clients" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <Users className="h-4 w-4" />
-                Klienti
-              </Link>
-            )}
-            {canViewDashboard && (
-              <Link href="/reports" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <BarChart className="h-4 w-4" />
-                Reporty
-              </Link>
-            )}
-            {canManageDisputes && (
-              <Link href="/disputes" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <MessageSquare className="h-4 w-4" />
-                Reklamace
-              </Link>
-            )}
-            {canManageOCR && (
-              <Link href="/ocr" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <FileText className="h-4 w-4" />
-                OCR
-              </Link>
-            )}
-            {canManageSettings && (
-              <Link href="/settings" className="hover:text-foreground flex items-center gap-2 transition-colors">
-                <Settings className="h-4 w-4" />
-                Nastavení
-              </Link>
-            )}
-          </nav>
         </div>
 
         <div className="flex items-center gap-4">
+
           {activeTimer && (
              <div className="hidden lg:block">
                 <TimerWidget initialEntry={activeTimer} userId={user?.id || ""} />
@@ -142,35 +102,88 @@ export default async function Header() {
 
           {user ? (
             <div className="flex items-center gap-4">
-              <span className="hidden md:inline-block text-sm text-muted-foreground">
-                {user.email}
-              </span>
-              <div className="flex items-center gap-2">
-                <Link href="/settings/profile">
-                  {userAvatar ? (
-                    <img 
-                      src={userAvatar} 
-                      alt="Avatar" 
-                      className="h-8 w-8 rounded-full object-cover border border-border hover:opacity-80 transition-opacity"
-                    />
-                  ) : (
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium hover:bg-primary/20 transition-colors">
-                      {user.firstName?.[0] || user.email[0].toUpperCase()}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={userAvatar || ""} alt={user.email} />
+                      <AvatarFallback>{user.firstName?.[0] || user.email[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{user.firstName} {user.lastName}</p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user.email}
+                      </p>
                     </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings/profile">
+                        <UserIcon className="mr-2 h-4 w-4" />
+                        <span>Můj profil</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings/organization">
+                        <Briefcase className="mr-2 h-4 w-4" />
+                        <span>Nastavení organizace</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings/integrations">
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        <span>Bankovní integrace</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  
+                  {canManageSettings && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-red-600 font-bold text-xs uppercase tracking-wider">
+                            Superadmin
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem asChild>
+                            <Link href="/settings/users" className="text-red-600 focus:text-red-600">
+                                <Users className="mr-2 h-4 w-4" />
+                                <span>Uživatelé</span>
+                            </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                            <Link href="/settings/developers/webhooks" className="text-red-600 focus:text-red-600">
+                                <Webhook className="mr-2 h-4 w-4" />
+                                <span>Webhooky</span>
+                            </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                            <Link href="/settings/danger-zone" className="text-red-600 focus:text-red-600">
+                                <ShieldAlert className="mr-2 h-4 w-4" />
+                                <span>Danger Zone</span>
+                            </Link>
+                        </DropdownMenuItem>
+                      </>
                   )}
-                </Link>
-                <form action={async () => {
-                  "use server";
-                  const { cookies } = await import("next/headers");
-                  const cookieStore = await cookies();
-                  cookieStore.delete("auth_token");
-                  cookieStore.delete("impersonated_user_id");
-                }}>
-                  <button className="text-muted-foreground hover:text-foreground transition-colors p-2">
-                    <LogOut className="h-4 w-4" />
-                  </button>
-                </form>
-              </div>
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <form action={async () => {
+                      "use server";
+                      const { cookies } = await import("next/headers");
+                      const cookieStore = await cookies();
+                      cookieStore.delete("auth_token");
+                      cookieStore.delete("impersonated_user_id");
+                    }} className="w-full">
+                      <button className="flex w-full items-center text-red-600">
+                        <LogOut className="mr-2 h-4 w-4" />
+                        <span>Odhlásit se</span>
+                      </button>
+                    </form>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ) : (
             <Link href="/login" className="text-sm font-medium hover:underline">

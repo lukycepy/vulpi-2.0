@@ -5,6 +5,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { AlertTriangle, Archive, ArrowDown, ArrowUp, Car, Package } from "lucide-react";
 import Link from "next/link";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
+import { InventoryCheckDialog } from "@/components/inventory/InventoryCheckDialog";
 
 export const metadata = {
   title: "Sklad | Vulpi",
@@ -64,6 +65,7 @@ export default async function InventoryPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <InventoryCheckDialog organizationId={orgId} products={safeProducts} />
           <Link 
             href="/inventory/vehicles" 
             className="flex items-center gap-2 bg-outline border px-4 py-2 rounded-md hover:bg-muted transition-colors"

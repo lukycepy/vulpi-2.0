@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Membership, RoleDefinition, User } from "@prisma/client";
-import { updateUserRole, removeUserFromOrganization } from "@/actions/users";
+import { updateUserRole, removeUserFromOrganization, inviteUserToOrganization } from "@/actions/users";
 import { impersonateUser } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { 
@@ -20,8 +20,16 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, UserPlus, Search, LogIn } from "lucide-react";
+import { Trash2, UserPlus, Search, LogIn, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
@@ -35,6 +43,38 @@ interface UserManagerProps {
 export function UserManager({ memberships, roles, currentUserId, canImpersonate = false }: UserManagerProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
+  
+  // Invite state
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("");
+  const [isInviting, setIsInviting] = useState(false);
+
+  const handleInvite = async () => {
+    if (!inviteEmail || !inviteRole) {
+      toast({ title: "Chyba", description: "Vyplňte email a roli.", variant: "destructive" });
+      return;
+    }
+
+    const orgId = memberships[0]?.organizationId;
+    if (!orgId) {
+        toast({ title: "Chyba", description: "Organizace nenalezena.", variant: "destructive" });
+        return;
+    }
+
+    setIsInviting(true);
+    try {
+      await inviteUserToOrganization(orgId, inviteEmail, inviteRole);
+      toast({ title: "Pozvánka odeslána", description: "Uživatel byl přidán do organizace." });
+      setIsInviteOpen(false);
+      setInviteEmail("");
+      setInviteRole("");
+    } catch (error: any) {
+      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+    } finally {
+      setIsInviting(false);
+    }
+  };
 
   const handleImpersonate = async (userId: string) => {
     if (!confirm("Opravdu se chcete přihlásit jako tento uživatel?")) return;
@@ -78,7 +118,7 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
           <h2 className="text-2xl font-bold tracking-tight">Správa uživatelů</h2>
           <p className="text-muted-foreground">Přehled a správa členů týmu.</p>
         </div>
-        <Button>
+        <Button onClick={() => setIsInviteOpen(true)}>
           <UserPlus className="mr-2 h-4 w-4" /> Pozvat uživatele
         </Button>
       </div>
@@ -98,7 +138,7 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
             <TableRow>
               <TableHead>Uživatel</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Akce</TableHead>
+              <TableHead className="text-right">Akce</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -109,65 +149,101 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
                     <span className="font-medium">
                       {membership.user.firstName} {membership.user.lastName}
                     </span>
-                    <span className="text-sm text-muted-foreground">{membership.user.email}</span>
+                    <span className="text-xs text-muted-foreground">{membership.user.email}</span>
+                    {membership.user.id === currentUserId && (
+                        <Badge variant="outline" className="w-fit mt-1">Já</Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>
                   <Select 
-                    defaultValue={membership.roleDefinitionId || undefined} 
-                    onValueChange={(val: string) => handleRoleChange(membership.id, val)}
-                    disabled={membership.userId === currentUserId} // Prevent changing own role (basic safety)
+                    defaultValue={membership.roleDefId} 
+                    onValueChange={(val) => handleRoleChange(membership.id, val)}
+                    disabled={membership.user.id === currentUserId} // Prevent changing own role effectively locking self out
                   >
                     <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Vyberte roli" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {roles.map((role) => (
                         <SelectItem key={role.id} value={role.id}>
-                          <div className="flex items-center justify-between w-full gap-2">
-                            <span>{role.name}</span>
-                            {role.isSystem && <Badge variant="secondary" className="text-[10px] h-4 px-1">System</Badge>}
-                          </div>
+                          {role.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </TableCell>
-                <TableCell>
-                  {canImpersonate && membership.userId !== currentUserId && (
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    {canImpersonate && membership.user.id !== currentUserId && (
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleImpersonate(membership.user.id)}
+                            title="Přihlásit se jako tento uživatel"
+                        >
+                            <LogIn className="h-4 w-4 text-blue-600" />
+                        </Button>
+                    )}
                     <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => handleImpersonate(membership.userId)}
-                      title="Přihlásit se jako uživatel"
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleRemoveUser(membership.id)}
+                        disabled={membership.user.id === currentUserId}
                     >
-                      <LogIn className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
-                  )}
-                  {membership.userId !== currentUserId && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => handleRemoveUser(membership.id)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      title="Odebrat uživatele"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
-            {filteredMemberships.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={3} className="h-24 text-center">
-                  Žádní uživatelé nenalezeni.
-                </TableCell>
-              </TableRow>
-            )}
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pozvat nového uživatele</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail</Label>
+              <Input 
+                id="email" 
+                type="email" 
+                placeholder="jan.novak@firma.cz"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              <Select onValueChange={setInviteRole} value={inviteRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Vyberte roli" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsInviteOpen(false)} disabled={isInviting}>
+              Zrušit
+            </Button>
+            <Button onClick={handleInvite} disabled={isInviting}>
+              {isInviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Pozvat uživatele
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { PinInvoiceButton } from "@/components/invoices/PinInvoiceButton";
 import { Plus, FileText, CheckCircle, AlertCircle, XCircle, Clock } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth-permissions";
 import { redirect } from "next/navigation";

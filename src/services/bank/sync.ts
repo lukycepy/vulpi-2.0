@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { decryptString } from "@/lib/crypto";
 import { fetchFioMovements } from "@/services/bank/fio";
 import { fetchRbMovements } from "@/services/bank/rb";
+import { syncImapBank } from "@/services/bank/imap";
 
 function toFioDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -31,12 +32,16 @@ export async function syncBankMovements(orgId?: string) {
       const token = decryptString(integration.encryptedToken);
       const key = integration.encryptedKey ? decryptString(integration.encryptedKey) : null;
 
-      const fetched =
-        integration.provider === "FIO"
-          ? await fetchFioMovements(token, fromStr, toStr)
-          : integration.provider === "RB"
-            ? await fetchRbMovements(token, fromStr, toStr)
-            : [];
+      let fetched: any[] = [];
+
+      if (integration.provider === "FIO") {
+          fetched = await fetchFioMovements(token, fromStr, toStr);
+      } else if (integration.provider === "RB") {
+          fetched = await fetchRbMovements(token, fromStr, toStr);
+      } else if (integration.provider === "IMAP") {
+          // IMAP sync handles its own connection and parsing
+          fetched = await syncImapBank(integration);
+      }
 
       const existing = await prisma.bankMovement.findMany({
         where: {

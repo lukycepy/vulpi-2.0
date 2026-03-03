@@ -1,215 +1,157 @@
+
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
+import { revalidatePath } from "next/cache";
 
-export async function createProduct(formData: FormData) {
+interface InventoryCheckItem {
+  productId: string;
+  actualQuantity: number;
+}
+
+export async function submitInventoryCheck(organizationId: string, actualStocks: InventoryCheckItem[]) {
   const user = await getCurrentUser();
-  if (!user) throw new Error("Nejste přihlášeni.");
-
-  const membership = await prisma.membership.findFirst({
-    where: { userId: user.id }
-  });
-  
-  if (!membership) throw new Error("Membership not found");
-  const orgId = membership.organizationId;
-
-  const canManageInventory = await hasPermission(user.id, orgId, "manage_inventory");
-  if (!canManageInventory) {
-    throw new Error("Nemáte oprávnění pro správu skladu.");
+  if (!user) {
+    throw new Error("Nejste přihlášen");
   }
 
-  const canViewMargins = await hasPermission(user.id, orgId, "view_margins");
-
-  const name = formData.get("name") as string;
-  const sku = formData.get("sku") as string;
-  const ean = formData.get("ean") as string;
-  const unit = formData.get("unit") as string;
-  let buyPrice = parseFloat(formData.get("buyPrice") as string);
-  const sellPrice = parseFloat(formData.get("sellPrice") as string);
-  const minStockLevel = parseFloat(formData.get("minStockLevel") as string);
-  const stockQuantity = parseFloat(formData.get("stockQuantity") as string);
-  const initialStock = isNaN(stockQuantity) ? 0 : stockQuantity;
-
-  // If user cannot view margins, they cannot set buy price
-  if (!canViewMargins) {
-    buyPrice = 0;
+  // Verify permission
+  const hasAccess = await hasPermission(user.id, organizationId, "manage_inventory");
+  if (!hasAccess) {
+    throw new Error("Nemáte oprávnění spravovat sklad");
   }
 
+  // Process all items in a transaction
   await prisma.$transaction(async (tx) => {
-    const product = await tx.product.create({
-      data: {
-        organizationId: orgId,
-        name,
-        sku: sku || null,
-        ean: ean || null,
-        unit: unit || "ks",
-        // price: sellPrice, // Removed: price doesn't exist in schema, sellPrice is used
-        buyPrice: isNaN(buyPrice) ? 0 : buyPrice,
-        sellPrice: isNaN(sellPrice) ? 0 : sellPrice,
-        minStockLevel: isNaN(minStockLevel) ? 0 : minStockLevel,
-        stockQuantity: initialStock,
-      }
-    });
-
-    if (initialStock > 0) {
-      await tx.stockMovement.create({
-        data: {
-          productId: product.id,
-          type: "IN",
-          quantity: initialStock,
-          note: "Počáteční stav",
-        }
+    for (const item of actualStocks) {
+      const product = await tx.product.findUnique({
+        where: { id: item.productId }
       });
+
+      if (!product || product.organizationId !== organizationId) {
+        continue; // Skip invalid products
+      }
+
+      const diff = item.actualQuantity - product.stockQuantity;
+
+      if (Math.abs(diff) > 0.0001) {
+        // Create movement
+        await tx.stockMovement.create({
+          data: {
+            productId: product.id,
+            type: diff > 0 ? "IN" : "OUT",
+            quantity: Math.abs(diff),
+            note: "Inventurní rozdíl",
+            date: new Date()
+          }
+        });
+
+        // Update product stock
+        await tx.product.update({
+          where: { id: product.id },
+          data: { stockQuantity: item.actualQuantity }
+        });
+      }
     }
   });
 
   revalidatePath("/inventory");
+  return { success: true };
 }
 
-export async function createStockMovement(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Nejste přihlášeni.");
+export async function createProduct(data: any) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
 
-  const membership = await prisma.membership.findFirst({
-    where: { userId: user.id }
-  });
-  
-  if (!membership) throw new Error("Membership not found");
-  const orgId = membership.organizationId;
-  
-  const canManageInventory = await hasPermission(user.id, orgId, "manage_inventory");
-  if (!canManageInventory) {
-    throw new Error("Nemáte oprávnění pro správu skladu.");
-  }
+    const hasAccess = await hasPermission(user.id, data.organizationId, "manage_inventory");
+    if (!hasAccess) throw new Error("Permission denied");
 
-  const productId = formData.get("productId") as string;
-  const type = formData.get("type") as string; // "IN" | "OUT"
-  const quantity = parseFloat(formData.get("quantity") as string);
-  const note = formData.get("note") as string;
-  const expirationDateStr = formData.get("expirationDate") as string;
-  const serialNumber = formData.get("serialNumber") as string;
+    await prisma.product.create({
+        data: {
+            organizationId: data.organizationId,
+            name: data.name,
+            sku: data.sku,
+            unit: data.unit,
+            buyPrice: parseFloat(data.buyPrice),
+            sellPrice: parseFloat(data.sellPrice),
+            minStockLevel: parseFloat(data.minStockLevel),
+            stockQuantity: parseFloat(data.stockQuantity || 0)
+        }
+    });
+    revalidatePath("/inventory");
+}
 
-  if (isNaN(quantity) || quantity <= 0) {
-    throw new Error("Invalid quantity");
-  }
-
-  // Transaction to ensure stock is updated correctly
-  await prisma.$transaction(async (tx) => {
-    // Use raw SQL to get product to ensure we bypass any schema caching issues
-    const products = await tx.$queryRaw<any[]>`SELECT * FROM "Product" WHERE "id" = ${productId}`;
-    const product = products[0];
-
+export async function createStockMovement(data: any) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+    
+    // We need to fetch product to check org permission
+    const product = await prisma.product.findUnique({ where: { id: data.productId } });
     if (!product) throw new Error("Product not found");
 
-    if (product.organizationId !== orgId) {
-      throw new Error("Product not found in this organization");
-    }
+    const hasAccess = await hasPermission(user.id, product.organizationId, "manage_inventory");
+    if (!hasAccess) throw new Error("Permission denied");
 
-    // Update stock
-    const newStock = type === "IN" 
-      ? product.stockQuantity + quantity 
-      : product.stockQuantity - quantity;
+    await prisma.$transaction(async (tx) => {
+        await tx.stockMovement.create({
+            data: {
+                productId: data.productId,
+                type: data.type,
+                quantity: parseFloat(data.quantity),
+                note: data.note,
+                date: new Date()
+            }
+        });
 
-    if (newStock < 0) {
-      throw new Error("Nedostatek zboží na skladě");
-    }
-
-    // Update product stock
-    await tx.$executeRaw`UPDATE "Product" SET "stockQuantity" = ${newStock} WHERE "id" = ${productId}`;
-
-    // Create movement with new fields using Raw SQL
-    const id = "sm_" + Math.random().toString(36).substr(2, 9);
-    const expirationDate = expirationDateStr ? new Date(expirationDateStr).toISOString() : null;
-    const sn = serialNumber || null;
-    const now = new Date().toISOString();
-
-    await tx.$executeRaw`
-      INSERT INTO "StockMovement" ("id", "productId", "type", "quantity", "date", "note", "expirationDate", "serialNumber", "createdAt")
-      VALUES (${id}, ${productId}, ${type}, ${quantity}, ${now}, ${note || null}, ${expirationDate}, ${sn}, ${now})
-    `;
-  });
-
-  revalidatePath("/inventory");
-  revalidatePath(`/inventory/products/${productId}`);
+        const change = data.type === "IN" ? parseFloat(data.quantity) : -parseFloat(data.quantity);
+        await tx.product.update({
+            where: { id: data.productId },
+            data: { stockQuantity: { increment: change } }
+        });
+    });
+    revalidatePath("/inventory");
 }
 
-export async function createVehicle(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
+export async function createVehicle(data: any) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
 
-  const membership = await prisma.membership.findFirst({
-    where: { userId: user.id }
-  });
-  
-  if (!membership) throw new Error("Membership not found");
-  const orgId = membership.organizationId;
+    const hasAccess = await hasPermission(user.id, data.organizationId, "manage_inventory");
+    if (!hasAccess) throw new Error("Permission denied");
 
-  const canManageInventory = await hasPermission(user.id, orgId, "manage_inventory");
-  if (!canManageInventory) {
-    throw new Error("Nemáte oprávnění pro správu skladu.");
-  }
-
-  const name = formData.get("name") as string;
-  const plate = formData.get("plate") as string;
-  const fuelType = formData.get("fuelType") as string;
-
-  await prisma.vehicle.create({
-    data: {
-      organizationId: orgId,
-      name,
-      plate: plate,
-      // brand: null, // Removed: doesn't exist in schema
-      // model: null, // Removed: doesn't exist in schema
-    }
-  });
-
-  revalidatePath("/inventory/vehicles");
+    await prisma.vehicle.create({
+        data: {
+            organizationId: data.organizationId,
+            name: data.name,
+            plate: data.plate,
+            fuelType: data.fuelType
+        }
+    });
+    revalidatePath("/inventory/vehicles");
 }
 
-export async function createVehicleLog(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
+export async function createVehicleLog(data: any) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
 
-  const vehicleId = formData.get("vehicleId") as string;
-  
-  const vehicle = await prisma.vehicle.findUnique({
-    where: { id: vehicleId }
-  });
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: data.vehicleId } });
+    if (!vehicle) throw new Error("Vehicle not found");
 
-  if (!vehicle) throw new Error("Vehicle not found");
+    const hasAccess = await hasPermission(user.id, vehicle.organizationId, "manage_inventory");
+    if (!hasAccess) throw new Error("Permission denied");
 
-  const canManageInventory = await hasPermission(user.id, vehicle.organizationId, "manage_inventory");
-  if (!canManageInventory) {
-    throw new Error("Nemáte oprávnění pro správu vozového parku.");
-  }
-
-  const date = new Date(formData.get("date") as string);
-  const startKm = parseFloat(formData.get("startKm") as string);
-  const endKm = parseFloat(formData.get("endKm") as string);
-  const purpose = formData.get("purpose") as string;
-  const from = formData.get("from") as string;
-  const to = formData.get("to") as string;
-
-  const distance = endKm - startKm;
-
-  if (distance < 0) {
-    throw new Error("Konečný stav tachometru musí být vyšší než počáteční");
-  }
-
-  await prisma.vehicleLog.create({
-    data: {
-      vehicleId,
-      date,
-      startKm: startKm,
-      endKm: endKm,
-      distance,
-      purpose: purpose || null,
-      from,
-      to
-    }
-  });
-
-  revalidatePath("/inventory/vehicles");
+    await prisma.vehicleLog.create({
+        data: {
+            vehicleId: data.vehicleId,
+            date: new Date(data.date),
+            startKm: parseFloat(data.startKm),
+            endKm: parseFloat(data.endKm),
+            distance: parseFloat(data.endKm) - parseFloat(data.startKm),
+            purpose: data.purpose,
+            from: data.from,
+            to: data.to
+        }
+    });
+    revalidatePath("/inventory/vehicles");
 }

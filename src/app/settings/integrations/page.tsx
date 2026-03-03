@@ -2,6 +2,8 @@
 import { prisma } from "@/lib/prisma";
 import { updateOrganization } from "@/actions/organization";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
+import { BankIntegrationForm } from "@/components/banking/BankIntegrationForm";
+import { Button } from "@/components/ui/button";
 
 export default async function IntegrationsSettings() {
   const user = await getCurrentUser();
@@ -21,6 +23,15 @@ export default async function IntegrationsSettings() {
 
   const canManageSettings = await hasPermission(user.id, org.id, "manage_settings");
 
+  // Check for existing IMAP integration
+  const existingImap = await prisma.bankIntegration.findFirst({
+      where: {
+          organizationId: org.id,
+          provider: "IMAP",
+          isActive: true
+      }
+  });
+
   if (!canManageSettings) {
     return (
       <div className="container mx-auto p-6 max-w-4xl">
@@ -32,11 +43,23 @@ export default async function IntegrationsSettings() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Integrace</h1>
+    <div className="container mx-auto p-6 max-w-4xl space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold mb-2">Integrace</h1>
+        <p className="text-muted-foreground">Správa propojení s externími službami a bankami.</p>
+      </div>
       
       <div className="grid gap-8">
         
+        {/* Bank Integration Section */}
+        <section className="space-y-4">
+            <h2 className="text-xl font-semibold">Bankovní spojení</h2>
+            <BankIntegrationForm 
+                organizationId={org.id} 
+                existingIntegration={!!existingImap} 
+            />
+        </section>
+
         {/* Cloud Storage */}
         <section className="bg-card p-6 rounded-lg border shadow-sm">
           <h2 className="text-xl font-semibold mb-4">Cloudová úložiště</h2>

@@ -1,3 +1,4 @@
+
 "use server";
 
 import { prisma } from "@/lib/prisma";
@@ -90,5 +91,65 @@ export async function removeUserFromOrganization(membershipId: string) {
   await prisma.membership.delete({
     where: { id: membershipId },
   });
+  revalidatePath("/settings/users");
+}
+
+export async function inviteUserToOrganization(organizationId: string, email: string, roleDefId: string) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const canManageUsers = await hasPermission(user.id, organizationId, "manage_users");
+  if (!canManageUsers) {
+    throw new Error("Nemáte oprávnění spravovat uživatele.");
+  }
+
+  let targetUser = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (!targetUser) {
+    targetUser = await prisma.user.create({
+      data: {
+        email,
+        passwordHash: "NEEDS_PASSWORD_RESET",
+        firstName: "",
+        lastName: "",
+        // We might need default values for other required fields if any.
+        // Assuming minimal User model.
+      },
+    });
+  }
+
+  const existingMembership = await prisma.membership.findFirst({
+    where: {
+      userId: targetUser.id,
+      organizationId,
+    },
+  });
+
+  if (existingMembership) {
+    throw new Error("Tento uživatel již v organizaci je.");
+  }
+
+  const roleDef = await prisma.roleDefinition.findUnique({
+    where: { id: roleDefId },
+  });
+
+  if (!roleDef) throw new Error("Role definition not found");
+
+  let legacyRole = "USER";
+  if (["ADMIN", "MANAGER", "ACCOUNTANT", "WAREHOUSEMAN", "CLIENT"].includes(roleDef.name)) {
+    legacyRole = roleDef.name;
+  }
+
+  await prisma.membership.create({
+    data: {
+      userId: targetUser.id,
+      organizationId,
+      roleDefId,
+      role: legacyRole as any, // Cast to avoid enum type issues if strict
+    },
+  });
+
   revalidatePath("/settings/users");
 }

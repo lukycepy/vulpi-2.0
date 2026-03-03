@@ -115,6 +115,7 @@ export async function POST(req: Request) {
         organizationId: organization.id,
         clientId,
         number,
+        type: "FAKTURA",
         variableSymbol: number,
         status: "DRAFT", // API creates DRAFT by default
         currency,

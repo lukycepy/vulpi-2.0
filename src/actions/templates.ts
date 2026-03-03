@@ -93,11 +93,59 @@ export async function getInvoiceTemplate(id: string) {
   return template;
 }
 
-export async function createInvoiceTemplate(data: {
-  organizationId: string;
-  name: string;
-  primaryColor?: string;
-  secondaryColor?: string;
+export async function createInvoiceTemplate(data: any) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
+  const canManage = await hasPermission(user.id, data.organizationId, "manage_templates");
+  if (!canManage) {
+    throw new Error("Nemáte oprávnění spravovat šablony.");
+  }
+
+  return await (prisma as any).invoiceTemplate.create({
+    data: {
+      organizationId: data.organizationId,
+      name: data.name,
+      primaryColor: data.primaryColor,
+      secondaryColor: data.secondaryColor,
+      fontFamily: data.fontFamily,
+      logoPosition: data.logoPosition,
+      showQrCode: data.showQrCode,
+      showSignature: data.showSignature,
+      customCss: data.customCss,
+    },
+  });
+}
+
+export async function updateInvoiceTemplate(id: string, data: any) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Nejste přihlášeni.");
+
+  const template = await (prisma as any).invoiceTemplate.findUnique({
+    where: { id },
+  });
+
+  if (!template) throw new Error("Šablona nenalezena.");
+
+  const canManage = await hasPermission(user.id, template.organizationId, "manage_templates");
+  if (!canManage) {
+    throw new Error("Nemáte oprávnění spravovat šablony.");
+  }
+
+  return await (prisma as any).invoiceTemplate.update({
+    where: { id },
+    data: {
+      name: data.name,
+      primaryColor: data.primaryColor,
+      secondaryColor: data.secondaryColor,
+      fontFamily: data.fontFamily,
+      logoPosition: data.logoPosition,
+      showQrCode: data.showQrCode,
+      showSignature: data.showSignature,
+      customCss: data.customCss,
+    },
+  });
+}
   fontFamily?: string;
   logoPosition?: string;
   showQrCode?: boolean;

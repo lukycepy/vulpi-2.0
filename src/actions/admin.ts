@@ -77,21 +77,83 @@ export async function toggleAnnouncement(id: string) {
     revalidatePath("/");
 }
 
-export async function blockUser(userId: string) {
+export async function purgeTestData(organizationId: string) {
     const user = await getCurrentUser();
-    if (!user) throw new Error("Unauthorized");
-    // Check superadmin...
+    if (!user) throw new Error("Nejste přihlášen");
 
-    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
-    if (!targetUser) return;
-
-    await prisma.user.update({
-        where: { id: userId },
-        data: { 
-            // @ts-ignore - Prisma types might be out of sync
-            isBlocked: !targetUser.isBlocked 
-        }
+    // Verify permission - must be OWNER or SUPERADMIN
+    const membership = await prisma.membership.findFirst({
+        where: { userId: user.id, organizationId }
     });
 
-    revalidatePath("/settings/users"); // or admin users list
+    if (!membership || (membership.role !== "OWNER" && membership.role !== "SUPERADMIN")) {
+        throw new Error("Pouze vlastník organizace může smazat všechna data.");
+    }
+
+    // Use transaction to ensure data integrity
+    await prisma.$transaction(async (tx) => {
+        // 1. Delete Invoice Items (Cascade usually handles this, but being explicit is safer)
+        // Actually, InvoiceItem is deleted via cascade from Invoice usually.
+        // Let's delete from leaf nodes up.
+
+        // Delete Invoice Items linked to invoices of this org
+        // Note: Prisma deleteMany doesn't support joins in 'where' for all DBs efficiently, 
+        // but for SQLite it works or we filter by IDs.
+        // Safest is to delete Invoices and let Cascade handle Items if configured, 
+        // OR delete items explicitly. 
+        // Given the prompt asks to delete specifically from tables, let's be thorough.
+
+        // Delete Approval Requests
+        await tx.approvalRequest.deleteMany({
+            where: { invoice: { organizationId } }
+        });
+
+        // Delete Email Logs linked to Invoices
+        await tx.emailLog.deleteMany({
+            where: { invoice: { organizationId } }
+        });
+
+        // Delete Invoice Custom Fields
+        await tx.invoiceCustomFieldValue.deleteMany({
+            where: { invoice: { organizationId } }
+        });
+
+        // Delete Attachments linked to Invoices
+        await tx.attachment.deleteMany({
+            where: { invoice: { organizationId } }
+        });
+
+        // Delete Invoice Items
+        await tx.invoiceItem.deleteMany({
+            where: { invoice: { organizationId } }
+        });
+
+        // Delete Invoices
+        await tx.invoice.deleteMany({
+            where: { organizationId }
+        });
+
+        // Delete Expenses
+        await tx.expense.deleteMany({
+            where: { organizationId }
+        });
+
+        // Delete Bank Movements
+        await tx.bankMovement.deleteMany({
+            where: { bankIntegration: { organizationId } }
+        });
+
+        // Delete Time Entries
+        await tx.timeEntry.deleteMany({
+            where: { organizationId }
+        });
+        
+        // Also delete Stock Movements? Prompt didn't explicitly say so, but "InvoiceItem" suggests order/stock logic.
+        // Prompt said: InvoiceItem, Invoice, Expense, BankMovement, TimeEntry.
+        // Let's stick to the list + obvious dependencies.
+        // If we leave StockMovements, stats might be weird if they were linked to invoices (not directly linked in schema usually).
+    });
+
+    revalidatePath("/");
+    return { success: true };
 }
