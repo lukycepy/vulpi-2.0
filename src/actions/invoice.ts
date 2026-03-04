@@ -5,18 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 import { triggerWebhook, sendDiscordNotification, sendNotificationWebhook } from "@/services/webhook";
-// import { generateInvoicePdfBuffer } from "@/lib/pdf-server";
-// import { uploadToCloudStorage } from "@/lib/cloud-storage";
-// import { syncInvoiceToCloud } from "@/services/integrations/cloudSync";
-
-// Stub functions to prevent build errors
-async function generateInvoicePdfBuffer(invoice: any): Promise<Buffer> {
-    return Buffer.from("PDF_CONTENT");
-}
-
-async function syncInvoiceToCloud(invoice: any, organization: any) {
-    console.log("Syncing to cloud...", invoice.id);
-}
+import { generateInvoicePdfBuffer } from "@/lib/pdf-server";
+import { syncInvoiceToCloud } from "@/lib/cloud-storage";
 
 export interface InvoiceItemData {
   description: string;
@@ -126,7 +116,46 @@ export async function togglePinInvoice(id: string) {
   }
 }
 
-export async function createInvoice(data: any) {
+import { z } from "zod";
+import { logAction } from "@/actions/audit";
+
+const InvoiceItemSchema = z.object({
+  description: z.string(),
+  quantity: z.number(),
+  unit: z.string(),
+  unitPrice: z.number(),
+  vatRate: z.number(),
+  discount: z.number(),
+  totalAmount: z.number(),
+  sku: z.string().optional(),
+  weightKg: z.number().optional()
+});
+
+const CustomFieldSchema = z.object({
+  fieldId: z.string(),
+  value: z.string().or(z.number()).or(z.boolean())
+});
+
+const InvoiceSchema = z.object({
+  clientId: z.string().min(1, "Klient je povinný"),
+  number: z.string().min(1, "Číslo faktury je povinné"),
+  type: z.string(),
+  status: z.string().optional(),
+  issuedAt: z.date().or(z.string().transform(str => new Date(str))),
+  dueAt: z.date().or(z.string().transform(str => new Date(str))),
+  currency: z.string(),
+  exchangeRate: z.number().default(1),
+  notes: z.string().optional(),
+  bankDetailId: z.string().optional(),
+  vatMode: z.string().default("STANDARD"),
+  discount: z.number().default(0),
+  isVatInclusive: z.boolean().default(false),
+  relatedId: z.string().optional(),
+  items: z.array(InvoiceItemSchema).min(1, "Faktura musí obsahovat alespoň jednu položku"),
+  customFields: z.array(CustomFieldSchema).optional()
+});
+
+export async function createInvoice(data: z.infer<typeof InvoiceSchema>) {
   const user = await getCurrentUser();
   if (!user) {
     throw new Error("Nejste přihlášen");
@@ -147,21 +176,23 @@ export async function createInvoice(data: any) {
   }
 
   // Validate inputs
-  if (!data.clientId || !data.items || data.items.length === 0) {
-    throw new Error("Chybí povinné údaje (klient, položky)");
+  const validation = InvoiceSchema.safeParse(data);
+  if (!validation.success) {
+    throw new Error(validation.error.issues[0]?.message ?? "Neplatná data");
   }
+  const validatedData = validation.data;
 
   // Calculate totals
   const totals = calculateInvoiceTotals(
-    data.items, 
-    data.vatMode, 
-    data.discount, 
-    data.isVatInclusive
+    validatedData.items, 
+    validatedData.vatMode, 
+    validatedData.discount, 
+    validatedData.isVatInclusive
   );
 
   // Apply Rounding Rule from Organization Settings
-  // @ts-ignore - Prisma types might be out of sync
-  const roundingRule = membership.organization.roundingRule || "MATH_2";
+  const org = membership.organization as any;
+  const roundingRule = org.roundingRule || "MATH_2";
   let finalTotal = totals.totalAmount;
   let roundingDiff = 0;
 
@@ -172,10 +203,9 @@ export async function createInvoice(data: any) {
       finalTotal = Math.round(totals.totalAmount);
       roundingDiff = finalTotal - totals.totalAmount;
   } else {
-      // MATH_2 (Default) - already handled by float, but let's ensure 2 decimals
-      // Actually floats can be messy.
+      // MATH_2 (Default)
       finalTotal = Math.round(totals.totalAmount * 100) / 100;
-      roundingDiff = finalTotal - totals.totalAmount; // Should be negligible or 0
+      roundingDiff = finalTotal - totals.totalAmount;
   }
 
   const invoiceItems = [...totals.items];
@@ -192,6 +222,19 @@ export async function createInvoice(data: any) {
       });
   }
 
+  // Approval Workflow Logic
+  let invoiceStatus = validatedData.status || "DRAFT";
+  
+  // Only apply approval logic if trying to issue the invoice
+  if (invoiceStatus === "ISSUED") {
+      const isPrivileged = ["MANAGER", "ADMIN", "SUPERADMIN"].includes(membership.role);
+      
+      // If not privileged and amount > 5000, force pending approval
+      if (!isPrivileged && finalTotal > 5000) {
+          invoiceStatus = "PENDING_APPROVAL";
+      }
+  }
+
   // Create invoice
   const invoice = await prisma.invoice.create({
     data: {
@@ -199,7 +242,7 @@ export async function createInvoice(data: any) {
       clientId: data.clientId,
       number: data.number,
       type: data.type,
-      status: "DRAFT", // Default status
+      status: invoiceStatus,
       issuedAt: data.issuedAt,
       dueAt: data.dueAt,
       currency: data.currency,
@@ -229,12 +272,23 @@ export async function createInvoice(data: any) {
       
       customFields: {
         create: data.customFields?.map((cf: any) => ({
-          definitionId: cf.fieldId,
-          value: cf.value
+          fieldId: cf.fieldId,
+          value: String(cf.value)
         })) || []
       }
     }
   });
+
+  // If status is PENDING_APPROVAL, create an Approval Request
+  if (invoiceStatus === "PENDING_APPROVAL") {
+      await prisma.approvalRequest.create({
+          data: {
+              invoiceId: invoice.id,
+              requesterId: user.id,
+              status: "PENDING"
+          }
+      });
+  }
 
   // Handle cloud integrations
   // @ts-ignore
@@ -269,7 +323,7 @@ export async function createInvoice(data: any) {
       // Logic to add event to GCal...
       // This usually requires OAuth flow per user or service account.
       // We'll just log for now or create a "Todo"
-      console.log("Should add to Google Calendar:", invoice.dueAt);
+      // console.log("Should add to Google Calendar:", invoice.dueAt);
   }
 
   // Handle Webhook
@@ -295,11 +349,13 @@ export async function createInvoice(data: any) {
       }
   }
 
+  await logAction("CREATE_INVOICE", invoice.id, null, validatedData);
+
   revalidatePath("/invoices");
   redirect(`/invoices/${invoice.id}`);
 }
 
-export async function updateInvoice(id: string, data: any, lastUpdatedAt?: Date | string) {
+export async function updateInvoice(id: string, data: Partial<z.infer<typeof InvoiceSchema>>, lastUpdatedAt?: Date | string) {
   const user = await getCurrentUser();
   if (!user) {
     throw new Error("Nejste přihlášen");
@@ -326,6 +382,14 @@ export async function updateInvoice(id: string, data: any, lastUpdatedAt?: Date 
     throw new Error("Faktura nenalezena nebo nemáte oprávnění");
   }
 
+  // Validate inputs
+  const PartialInvoiceSchema = InvoiceSchema.partial();
+  const validation = PartialInvoiceSchema.safeParse(data);
+  if (!validation.success) {
+    throw new Error(validation.error.issues[0]?.message ?? "Neplatná data");
+  }
+  const validatedData = validation.data;
+
   // Optimistic Concurrency Control
   if (lastUpdatedAt) {
       const dbTime = new Date(existingInvoice.updatedAt).getTime();
@@ -341,47 +405,98 @@ export async function updateInvoice(id: string, data: any, lastUpdatedAt?: Date 
     throw new Error("Faktura je uzamčena a nelze ji upravovat");
   }
 
-  // Calculate totals
-  const { items: calculatedItems, totalAmount, totalVat } = calculateInvoiceTotals(
-    data.items, 
-    data.vatMode, 
-    data.discount, 
-    data.isVatInclusive
-  );
+  // Calculate totals if items are provided
+  let calculatedItems: InvoiceItemData[] = [];
+  let totalAmount = existingInvoice.totalAmount;
+  let totalVat = existingInvoice.totalVat;
+
+  if (validatedData.items) {
+      const totals = calculateInvoiceTotals(
+        validatedData.items as any, // Cast because safeParse makes it optional/partial but calculate expects array
+        validatedData.vatMode || existingInvoice.vatMode, 
+        validatedData.discount || existingInvoice.discount, 
+        validatedData.isVatInclusive || false // Assuming false if not provided, or should fetch from invoice?
+      );
+      calculatedItems = totals.items;
+      totalAmount = totals.totalAmount;
+      totalVat = totals.totalVat;
+  }
 
   // Transaction to update invoice and items
   await prisma.$transaction(async (tx) => {
-    // Delete existing items
-    await tx.invoiceItem.deleteMany({
-      where: { invoiceId: id }
-    });
+    // Approval Workflow Logic for Update
+    let newStatus = validatedData.status || existingInvoice.status;
+    
+    if (newStatus === "ISSUED" && existingInvoice.status !== "ISSUED") {
+       const membership = await tx.membership.findFirst({
+          where: { userId: user.id, organizationId: existingInvoice.organizationId }
+       });
+       
+       if (membership) {
+           const isPrivileged = ["MANAGER", "ADMIN", "SUPERADMIN"].includes(membership.role);
+           
+           if (!isPrivileged && totalAmount > 5000) {
+               newStatus = "PENDING_APPROVAL";
+               
+               // Create or update approval request
+               const existingRequest = await tx.approvalRequest.findUnique({
+                   where: { invoiceId: id }
+               });
+               
+               if (existingRequest) {
+                   await tx.approvalRequest.update({
+                       where: { id: existingRequest.id },
+                       data: { status: "PENDING", requesterId: user.id }
+                   });
+               } else {
+                   await tx.approvalRequest.create({
+                       data: {
+                           invoiceId: id,
+                           requesterId: user.id,
+                           status: "PENDING"
+                       }
+                   });
+               }
+           }
+       }
+    }
 
-    // Delete custom fields
-    await prisma.invoiceCustomFieldValue.deleteMany({
-      where: { invoiceId: id }
-    });
+    if (validatedData.items) {
+        // Delete existing items
+        await tx.invoiceItem.deleteMany({
+        where: { invoiceId: id }
+        });
+    }
+
+    if (validatedData.customFields) {
+        // Delete custom fields
+        await prisma.invoiceCustomFieldValue.deleteMany({
+        where: { invoiceId: id }
+        });
+    }
 
     // Update invoice
     await tx.invoice.update({
       where: { id },
       data: {
-        clientId: data.clientId,
-        number: data.number,
-        type: data.type,
-        issuedAt: data.issuedAt,
-        dueAt: data.dueAt,
-        currency: data.currency,
-        exchangeRate: data.exchangeRate,
-        notes: data.notes,
-        bankDetailId: data.bankDetailId,
-      vatMode: data.vatMode,
-      discount: data.discount,
-      relatedId: data.relatedId,
+        clientId: validatedData.clientId,
+        number: validatedData.number,
+        type: validatedData.type,
+        status: newStatus,
+        issuedAt: validatedData.issuedAt,
+        dueAt: validatedData.dueAt,
+        currency: validatedData.currency,
+        exchangeRate: validatedData.exchangeRate,
+        notes: validatedData.notes,
+        bankDetailId: validatedData.bankDetailId,
+        vatMode: validatedData.vatMode,
+        discount: validatedData.discount,
+        relatedId: validatedData.relatedId,
         
-        totalAmount,
-        totalVat,
+        totalAmount: validatedData.items ? totalAmount : undefined, // Only update totals if items changed
+        totalVat: validatedData.items ? totalVat : undefined,
         
-        items: {
+        items: validatedData.items ? {
           create: calculatedItems.map(item => ({
             description: item.description,
             quantity: item.quantity,
@@ -393,17 +508,21 @@ export async function updateInvoice(id: string, data: any, lastUpdatedAt?: Date 
             sku: item.sku,
             weightKg: item.weightKg
           }))
-        },
+        } : undefined,
         
-        customFields: {
-        create: data.customFields?.map((cf: any) => ({
-          definitionId: cf.fieldId,
-          value: cf.value
-        })) || []
-      }
+        customFields: validatedData.customFields ? {
+        create: validatedData.customFields.map((cf: any) => ({
+          fieldId: cf.fieldId,
+          value: String(cf.value)
+        }))
+      } : undefined
       }
     });
+  }, {
+    timeout: 10000 // Increase timeout to 10s
   });
+
+  await logAction("UPDATE_INVOICE", id, existingInvoice, validatedData);
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
@@ -425,11 +544,23 @@ export async function deleteInvoice(id: string) {
         throw new Error("Nelze smazat - aktivní Legal Hold");
     }
 
-    // Check permissions...
-    const hasAccess = await hasPermission(user.id, membership.organizationId, "manage_invoices");
-    if (!hasAccess) throw new Error("Forbidden");
+    const invoice = await prisma.invoice.findUnique({
+        where: { id }
+    });
 
-    await prisma.invoice.delete({ where: { id } });
+    if (!invoice) throw new Error("Invoice not found");
+
+    const hasAccess = await hasPermission(user.id, membership.organizationId, "manage_invoices");
+    if (!hasAccess) {
+        throw new Error("Nemáte oprávnění mazat faktury");
+    }
+
+    await prisma.invoice.delete({
+        where: { id }
+    });
+
+    await logAction("DELETE_INVOICE", id, invoice, null);
+
     revalidatePath("/invoices");
 }
 
@@ -698,8 +829,6 @@ export async function updateInvoiceStatus(id: string, status: string) {
         if (invoice.organization.cloudIntegrationGoogleDrive || 
             invoice.organization.cloudIntegrationDropbox || 
             invoice.organization.cloudIntegrationOneDrive) {
-
-            console.log(`[Cloud Export] Invoice ${id} issued. Preparing export...`);
             
             // Generate PDF
             const pdfBuffer = await generateInvoicePdfBuffer({

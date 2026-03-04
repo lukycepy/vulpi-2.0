@@ -18,6 +18,7 @@ interface PageProps {
   searchParams: Promise<{
     query?: string;
     status?: string;
+    sort?: string; // field-direction (e.g. number-asc)
   }>;
 }
 
@@ -51,15 +52,14 @@ export default async function InvoicesPage(props: PageProps) {
   const searchParams = await props.searchParams;
   const query = searchParams.query || "";
   const status = searchParams.status || "ALL";
+  const sortParam = searchParams.sort || "issuedAt-desc";
+  const [sortField, sortDirection] = sortParam.split("-");
 
   const where: any = {
     organizationId: membership.organizationId
   };
 
   // If user has a department and is NOT Admin/Manager, filter by department
-  // Assuming roles: ADMIN, MANAGER see all. USER, ACCOUNTANT, etc. see only their department if set.
-  // Ideally, this logic should be in a centralized permission service or Policy.
-  // For now:
   if (currentUser?.department && !["ADMIN", "MANAGER", "SUPERADMIN"].includes(membership.role)) {
       where.department = currentUser.department;
   }
@@ -80,6 +80,21 @@ export default async function InvoicesPage(props: PageProps) {
     }
   }
 
+  const orderBy: any = [];
+  
+  if (sortField === "number") {
+      orderBy.push({ number: sortDirection });
+  } else if (sortField === "client") {
+      orderBy.push({ client: { name: sortDirection } });
+  } else if (sortField === "totalAmount") {
+      orderBy.push({ totalAmount: sortDirection });
+  } else if (sortField === "status") {
+      orderBy.push({ status: sortDirection });
+  } else {
+      // Default or issuedAt/dueAt
+      orderBy.push({ [sortField]: sortDirection });
+  }
+
   const invoices = await prisma.invoice.findMany({
     where,
     include: {
@@ -87,7 +102,7 @@ export default async function InvoicesPage(props: PageProps) {
     },
     orderBy: [
         { isPinned: "desc" },
-        { issuedAt: "desc" }
+        ...orderBy
       ],
   });
 
@@ -179,12 +194,36 @@ export default async function InvoicesPage(props: PageProps) {
           <table className="w-full caption-bottom text-sm">
             <thead className="[&_tr]:border-b">
               <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Číslo</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Klient</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Vystaveno</th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Splatnost</th>
-                <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Částka</th>
-                <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">Stav</th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                    <Link href={`/invoices?sort=number-${sortField === 'number' && sortDirection === 'asc' ? 'desc' : 'asc'}${query ? `&query=${query}` : ''}${status !== 'ALL' ? `&status=${status}` : ''}`}>
+                        Číslo {sortField === 'number' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </Link>
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                    <Link href={`/invoices?sort=client-${sortField === 'client' && sortDirection === 'asc' ? 'desc' : 'asc'}${query ? `&query=${query}` : ''}${status !== 'ALL' ? `&status=${status}` : ''}`}>
+                        Klient {sortField === 'client' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </Link>
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                    <Link href={`/invoices?sort=issuedAt-${sortField === 'issuedAt' && sortDirection === 'asc' ? 'desc' : 'asc'}${query ? `&query=${query}` : ''}${status !== 'ALL' ? `&status=${status}` : ''}`}>
+                        Vystaveno {sortField === 'issuedAt' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </Link>
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                    <Link href={`/invoices?sort=dueAt-${sortField === 'dueAt' && sortDirection === 'asc' ? 'desc' : 'asc'}${query ? `&query=${query}` : ''}${status !== 'ALL' ? `&status=${status}` : ''}`}>
+                        Splatnost {sortField === 'dueAt' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </Link>
+                </th>
+                <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                    <Link href={`/invoices?sort=totalAmount-${sortField === 'totalAmount' && sortDirection === 'asc' ? 'desc' : 'asc'}${query ? `&query=${query}` : ''}${status !== 'ALL' ? `&status=${status}` : ''}`}>
+                        Částka {sortField === 'totalAmount' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </Link>
+                </th>
+                <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
+                    <Link href={`/invoices?sort=status-${sortField === 'status' && sortDirection === 'asc' ? 'desc' : 'asc'}${query ? `&query=${query}` : ''}${status !== 'ALL' ? `&status=${status}` : ''}`}>
+                        Stav {sortField === 'status' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </Link>
+                </th>
                 <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Akce</th>
               </tr>
             </thead>

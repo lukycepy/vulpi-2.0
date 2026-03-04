@@ -55,7 +55,7 @@ export function NetProfitWidget({ income, expenses }: NetProfitWidgetProps) {
             {netProfitMargin.toFixed(0)}% marže
           </Badge>
         </div>
-        <CardDescription>Kolik vám zůstane "v kapse"</CardDescription>
+        <CardDescription>Kolik vám zůstane &quot;v kapse&quot;</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex space-x-2 mb-4">

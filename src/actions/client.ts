@@ -4,6 +4,36 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser, hasPermission } from "@/lib/auth-permissions";
 
+// Helper for stats calculation
+function calculateClientStats(client: any) {
+  const invoices = client.invoices || [];
+  
+  // LTV (Lifetime Value) = sum of PAID invoices
+  const totalTurnover = invoices
+    .filter((inv: any) => inv.status === 'PAID')
+    .reduce((sum: number, inv: any) => sum + inv.totalAmount, 0);
+    
+  const unpaidInvoices = invoices.filter((inv: any) => inv.status !== 'PAID' && inv.status !== 'CANCELLED' && inv.status !== 'DRAFT');
+  const unpaidCount = unpaidInvoices.length;
+  const unpaidAmount = unpaidInvoices.reduce((sum: number, inv: any) => sum + inv.totalAmount, 0);
+  
+  // Payment morale
+  const overdueCount = invoices.filter((inv: any) => inv.status === 'OVERDUE').length;
+  const totalIssued = invoices.filter((inv: any) => inv.status !== 'DRAFT' && inv.status !== 'CANCELLED').length;
+  
+  let paymentMorale = 100;
+  if (totalIssued > 0) {
+    paymentMorale = Math.max(0, 100 - ((overdueCount / totalIssued) * 100));
+  }
+
+  return {
+    totalTurnover,
+    unpaidCount,
+    unpaidAmount,
+    paymentMorale
+  };
+}
+
 export async function getClients() {
   const user = await getCurrentUser();
   if (!user) throw new Error("Nejste přihlášeni.");
@@ -19,8 +49,8 @@ export async function getClients() {
     where: { organizationId: orgId },
     include: {
       organization: { select: { isLegalHold: true } },
-      // tags: true, // Tags removed for now as schema mismatch
-      // contacts: true, // Contacts removed for now
+      tags: { select: { id: true, name: true, color: true } },
+      contacts: { select: { id: true, name: true, email: true, phone: true } },
       invoices: {
         select: {
           status: true,
@@ -32,38 +62,10 @@ export async function getClients() {
     orderBy: { createdAt: 'desc' }
   });
 
-  // Calculate stats
-  return clients.map(client => {
-    // LTV (Lifetime Value) = sum of PAID invoices
-    const totalTurnover = client.invoices
-      .filter(inv => inv.status === 'PAID')
-      .reduce((sum, inv) => sum + inv.totalAmount, 0);
-      
-    const unpaidInvoices = client.invoices.filter(inv => inv.status !== 'PAID' && inv.status !== 'CANCELLED' && inv.status !== 'DRAFT');
-    const unpaidCount = unpaidInvoices.length;
-    const unpaidAmount = unpaidInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-    
-    // Payment morale: Calculate percentage of invoices paid on time vs late
-    // We need dueAt and payment date. We don't have payment date in Invoice model easily available (maybe in AuditLog or BankMovement).
-    // For now, let's use a simple heuristic: Ratio of OVERDUE invoices to Total Issued.
-    const overdueCount = client.invoices.filter(inv => inv.status === 'OVERDUE').length;
-    const totalIssued = client.invoices.filter(inv => inv.status !== 'DRAFT' && inv.status !== 'CANCELLED').length;
-    
-    let paymentMorale = 100;
-    if (totalIssued > 0) {
-      paymentMorale = Math.max(0, 100 - ((overdueCount / totalIssued) * 100));
-    }
-
-    return {
-      ...client,
-      stats: {
-        totalTurnover,
-        unpaidCount,
-        unpaidAmount,
-        paymentMorale
-      }
-    };
-  });
+  return clients.map(client => ({
+    ...client,
+    stats: calculateClientStats(client)
+  }));
 }
 
 export async function getClient(id: string) {
@@ -74,8 +76,8 @@ export async function getClient(id: string) {
     where: { id },
     include: {
       organization: { select: { isLegalHold: true } },
-      // tags: true,
-      // contacts: true,
+      tags: true,
+      contacts: true,
       invoices: {
         select: {
           status: true,
@@ -88,62 +90,54 @@ export async function getClient(id: string) {
 
   if (!client) return null;
   
-  // Permission check
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id, organizationId: client.organizationId }
   });
   
   if (!membership) throw new Error("Unauthorized");
 
-  // Calculate stats
-  const totalTurnover = client.invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-  const unpaidInvoices = client.invoices.filter(inv => inv.status !== 'PAID' && inv.status !== 'CANCELLED' && inv.status !== 'DRAFT');
-  const unpaidCount = unpaidInvoices.length;
-  const unpaidAmount = unpaidInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-  
-  const overdueCount = client.invoices.filter(inv => inv.status === 'OVERDUE').length;
-  const totalIssued = client.invoices.filter(inv => inv.status !== 'DRAFT' && inv.status !== 'CANCELLED').length;
-  
-  let paymentMorale = 100;
-  if (totalIssued > 0) {
-    paymentMorale = Math.max(0, 100 - ((overdueCount / totalIssued) * 100));
-  }
-
   return {
     ...client,
-    stats: {
-      totalTurnover,
-      unpaidCount,
-      unpaidAmount,
-      paymentMorale
-    }
+    stats: calculateClientStats(client)
   };
 }
 
-export async function createClient(data: {
-  name: string;
-  taxId?: string;
-  vatId?: string;
-  address?: string;
-  mailingAddress?: string;
-  mailingCity?: string;
-  mailingZip?: string;
-  mailingCountry?: string;
-  email?: string;
-  phone?: string;
-  notes?: string;
-  language?: string;
-  tagIds?: string[];
-  contacts?: {
-    name: string;
-    email?: string;
-    phone?: string;
-    position?: string;
-    isPrimary?: boolean;
-  }[];
-}) {
+import { z } from "zod";
+import { logAction } from "@/actions/audit";
+
+const ClientSchema = z.object({
+  name: z.string().min(1, "Jméno je povinné"),
+  taxId: z.string().optional(),
+  vatId: z.string().optional(),
+  address: z.string().optional(),
+  mailingAddress: z.string().optional(),
+  mailingCity: z.string().optional(),
+  mailingZip: z.string().optional(),
+  mailingCountry: z.string().optional(),
+  email: z.string().email("Neplatný email").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  notes: z.string().optional(),
+  language: z.string().optional(),
+  tagIds: z.array(z.string()).optional(),
+  contacts: z.array(z.object({
+    name: z.string().min(1, "Jméno kontaktu je povinné"),
+    email: z.string().email("Neplatný email kontaktu").optional().or(z.literal("")),
+    phone: z.string().optional(),
+    position: z.string().optional(),
+    isPrimary: z.boolean().optional(),
+  })).optional(),
+});
+
+export async function createClient(data: z.infer<typeof ClientSchema>) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Nejste přihlášeni.");
+
+  const validation = ClientSchema.safeParse(data);
+  if (!validation.success) {
+    throw new Error(validation.error.issues[0]?.message ?? "Neplatná data");
+  }
+  
+  const validatedData = validation.data;
 
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id }
@@ -158,48 +152,46 @@ export async function createClient(data: {
   const client = await prisma.client.create({
     data: {
       organizationId: orgId,
-      name: data.name,
-      taxId: data.taxId,
-      vatId: data.vatId,
-      address: data.address,
-      mailingAddress: data.mailingAddress,
-      mailingCity: data.mailingCity,
-      mailingZip: data.mailingZip,
-      mailingCountry: data.mailingCountry,
-      email: data.email,
-      phone: data.phone,
-      notes: data.notes,
-      language: data.language || "cs",
-      tags: data.tagIds ? {
-        connect: data.tagIds.map(id => ({ id }))
+      name: validatedData.name,
+      taxId: validatedData.taxId,
+      vatId: validatedData.vatId,
+      address: validatedData.address,
+      mailingAddress: validatedData.mailingAddress,
+      mailingCity: validatedData.mailingCity,
+      mailingZip: validatedData.mailingZip,
+      mailingCountry: validatedData.mailingCountry,
+      email: validatedData.email,
+      phone: validatedData.phone,
+      notes: validatedData.notes,
+      language: validatedData.language || "cs",
+      tags: validatedData.tagIds ? {
+        connect: validatedData.tagIds.map(id => ({ id }))
       } : undefined,
-      contacts: data.contacts ? {
-        create: data.contacts
+      contacts: validatedData.contacts ? {
+        create: validatedData.contacts
       } : undefined
     },
   });
   
+  await logAction("CREATE_CLIENT", client.id, null, validatedData);
+
   revalidatePath("/clients");
   return client;
 }
 
-export async function updateClient(id: string, data: {
-  name?: string;
-  taxId?: string;
-  vatId?: string;
-  address?: string;
-  mailingAddress?: string;
-  mailingCity?: string;
-  mailingZip?: string;
-  mailingCountry?: string;
-  email?: string;
-  phone?: string;
-  notes?: string;
-  language?: string;
-  tagIds?: string[];
-}) {
+export async function updateClient(id: string, data: Partial<z.infer<typeof ClientSchema>>) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Nejste přihlášeni.");
+
+  // Partial validation for update
+  const PartialClientSchema = ClientSchema.partial();
+  const validation = PartialClientSchema.safeParse(data);
+  
+  if (!validation.success) {
+    throw new Error(validation.error.issues[0]?.message ?? "Neplatná data");
+  }
+  
+  const validatedData = validation.data;
 
   const client = await prisma.client.findUnique({ where: { id } });
   if (!client) throw new Error("Client not found");
@@ -210,24 +202,26 @@ export async function updateClient(id: string, data: {
   await prisma.client.update({
     where: { id },
     data: {
-      name: data.name,
-      taxId: data.taxId,
-      vatId: data.vatId,
-      address: data.address,
-      mailingAddress: data.mailingAddress,
-      mailingCity: data.mailingCity,
-      mailingZip: data.mailingZip,
-      mailingCountry: data.mailingCountry,
-      email: data.email,
-      phone: data.phone,
-      notes: data.notes,
-      language: data.language,
-      tags: data.tagIds ? {
-        set: data.tagIds.map(tagId => ({ id: tagId }))
+      name: validatedData.name,
+      taxId: validatedData.taxId,
+      vatId: validatedData.vatId,
+      address: validatedData.address,
+      mailingAddress: validatedData.mailingAddress,
+      mailingCity: validatedData.mailingCity,
+      mailingZip: validatedData.mailingZip,
+      mailingCountry: validatedData.mailingCountry,
+      email: validatedData.email,
+      phone: validatedData.phone,
+      notes: validatedData.notes,
+      language: validatedData.language,
+      tags: validatedData.tagIds ? {
+        set: validatedData.tagIds.map(tagId => ({ id: tagId }))
       } : undefined
     },
   });
   
+  await logAction("UPDATE_CLIENT", id, client, validatedData);
+
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);
 }
@@ -253,6 +247,8 @@ export async function deleteClient(id: string) {
     where: { id },
   });
   
+  await logAction("DELETE_CLIENT", id, client, null);
+
   revalidatePath("/clients");
 }
 
@@ -331,17 +327,20 @@ export async function addContactPerson(clientId: string, data: {
   if (!canManageClients) throw new Error("Nemáte oprávnění spravovat klienty.");
 
   if (data.isPrimary) {
-    // Unset other primary contacts
-    await prisma.contactPerson.updateMany({
+    await prisma.contact.updateMany({
       where: { clientId, isPrimary: true },
       data: { isPrimary: false }
     });
   }
-
-  await prisma.contactPerson.create({
+  
+  await prisma.contact.create({
     data: {
       clientId,
-      ...data
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      role: data.position,
+      isPrimary: !!data.isPrimary
     }
   });
   
@@ -352,7 +351,7 @@ export async function deleteContactPerson(id: string) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
 
-  const contact = await prisma.contactPerson.findUnique({
+  const contact = await prisma.contact.findUnique({
     where: { id },
     include: { client: true }
   });
@@ -362,7 +361,7 @@ export async function deleteContactPerson(id: string) {
   const canManageClients = await hasPermission(user.id, contact.client.organizationId, "manage_clients");
   if (!canManageClients) throw new Error("Unauthorized");
 
-  await prisma.contactPerson.delete({ where: { id } });
+  await prisma.contact.delete({ where: { id } });
   revalidatePath(`/clients/${contact.clientId}`);
 }
 

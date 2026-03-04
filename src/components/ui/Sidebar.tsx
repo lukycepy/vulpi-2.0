@@ -16,7 +16,8 @@ import {
   Settings, 
   ChevronLeft, 
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Mail
 } from "lucide-react";
 
 interface SidebarProps {
@@ -35,6 +36,13 @@ export function Sidebar({ permissions }: SidebarProps) {
   const canManageSettings = permissions.some(p => ["manage_settings", "manage_users", "manage_roles", "manage_templates", "manage_custom_fields"].includes(p));
   const canManageDisputes = canManageInvoices || canManageClients;
   const canManageOCR = canManageInvoices || permissions.includes("manage_expenses");
+  // Communication is available for those who can manage settings (Admin/Manager/Superadmin usually)
+  // or explicit permission if we had one. Based on prompt: Admin, Superadmin, Manager.
+  // These roles usually have 'manage_settings' or 'manage_invoices' + 'manage_users'.
+  // Let's rely on manage_clients as a proxy for now, or just visible for everyone who can view dashboard?
+  // Prompt says: Admin, Superadmin, Manager.
+  // Let's assume if they can manage settings or clients, they are likely in that group.
+  const canAccessCommunication = canManageSettings || canManageClients;
 
   const links = [
     { href: "/", label: "Přehled", icon: LayoutDashboard, visible: canViewDashboard },
@@ -45,6 +53,7 @@ export function Sidebar({ permissions }: SidebarProps) {
     { href: "/reports", label: "Reporty", icon: BarChart, visible: canViewDashboard },
     { href: "/disputes", label: "Reklamace", icon: MessageSquare, visible: canManageDisputes },
     { href: "/ocr", label: "OCR", icon: FileText, visible: canManageOCR },
+    { href: "/communication", label: "Komunikace", icon: Mail, visible: canAccessCommunication },
     { href: "/settings", label: "Nastavení", icon: Settings, visible: canManageSettings },
   ];
 

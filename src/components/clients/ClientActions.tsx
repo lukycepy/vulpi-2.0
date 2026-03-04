@@ -8,12 +8,14 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Download, Trash2 } from "lucide-react";
+import { MoreHorizontal, Download, Trash2, Edit, Send } from "lucide-react";
 import { exportClientData } from "@/actions/gdpr";
 import { deleteClient } from "@/actions/client";
+import { sendPortalLink } from "@/actions/portal";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export function ClientActions({ clientId, isLegalHold }: { clientId: string, isLegalHold?: boolean }) {
   const { toast } = useToast();
@@ -72,6 +74,25 @@ export function ClientActions({ clientId, isLegalHold }: { clientId: string, isL
     }
   };
 
+  const handleSendPortalLink = async () => {
+      setLoading(true);
+      try {
+          await sendPortalLink(clientId);
+          toast({
+              title: "Odesláno",
+              description: "Přístupové údaje byly odeslány na email klienta.",
+          });
+      } catch (error) {
+          toast({
+              variant: "destructive",
+              title: "Chyba",
+              description: error instanceof Error ? error.message : "Nepodařilo se odeslat email.",
+          });
+      } finally {
+          setLoading(false);
+      }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -80,6 +101,20 @@ export function ClientActions({ clientId, isLegalHold }: { clientId: string, isL
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+            <Link href={`/clients/${clientId}/edit`} className="cursor-pointer">
+                <Edit className="mr-2 h-4 w-4" />
+                Upravit klienta
+            </Link>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem onClick={handleSendPortalLink} disabled={loading}>
+            <Send className="mr-2 h-4 w-4" />
+            Poslat přístup do portálu
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
         <DropdownMenuItem onClick={handleExport} disabled={loading}>
           <Download className="mr-2 h-4 w-4" />
           GDPR Export

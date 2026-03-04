@@ -51,6 +51,8 @@ interface InvoiceEditorProps {
   organization?: {
     defaultGdprClause?: string | null;
     defaultSlaText?: string | null;
+    vatPayerStatus?: string | null; // Added
+    defaultVatMode?: string | null; // Added
   };
 }
 
@@ -123,7 +125,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
     language: initialData?.language || "cs",
     bankDetailId: initialData?.bankDetailId || bankDetails[0]?.id || "",
     notes: initialData?.notes || "",
-    vatMode: initialData?.vatMode || "STANDARD",
+    vatMode: initialData?.vatMode || (organization?.vatPayerStatus === "NON_PAYER" ? "NON_PAYER" : (organization?.defaultVatMode || "STANDARD")),
     isVatInclusive: initialData?.isVatInclusive || false,
     exchangeRate: initialData?.exchangeRate || 1,
     discount: initialData?.discount || 0, // Document level discount in %
@@ -229,7 +231,13 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
     try {
         // Allow only safe characters
         if (!/^[0-9+\-*/().,\s]+$/.test(input)) return null;
-        const normalized = input.replace(/,/g, '.');
+        let normalized = input.replace(/,/g, '.');
+        
+        // Fix for leading zeros causing octal interpretation or strict mode errors (e.g. "09")
+        // We replace "0" followed by a digit with just the digit, globally
+        // But we must preserve "0." (decimal)
+        normalized = normalized.replace(/\b0+(\d+)/g, '$1');
+
         // eslint-disable-next-line no-new-func
         const result = new Function(`return ${normalized}`)();
         return isFinite(result) ? result : null;
@@ -245,12 +253,14 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
     // Handle raw inputs for calculator
     if (field === 'quantityRaw') {
         item.quantityRaw = value;
+        newItems[index] = item; // Fix: Assign back to array
         setItems(newItems);
         setIsDirty(true);
         return;
     }
     if (field === 'unitPriceRaw') {
         item.unitPriceRaw = value;
+        newItems[index] = item; // Fix: Assign back to array
         setItems(newItems);
         setIsDirty(true);
         return;
@@ -259,6 +269,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
         const val = parseFloat(value.replace(',', '.'));
         item.weightKg = isNaN(val) ? 0 : val;
         item.weightRaw = value;
+        newItems[index] = item; // Fix: Assign back to array
         setItems(newItems);
         setIsDirty(true);
         return;
@@ -275,13 +286,13 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
     setIsDirty(true);
   };
 
-  const recalculateItemTotal = (item: EditorItem) => {
+  const recalculateItemTotal = (item: EditorItem, isInclusive = formData.isVatInclusive) => {
       const qty = Number(item.quantity);
       const price = Number(item.unitPrice);
       const discount = Number(item.discount);
       const vatRate = Number(item.vatRate);
       
-      if (formData.isVatInclusive) {
+      if (isInclusive) {
           // Price is with VAT
           const totalWithVat = qty * price;
           const discountAmount = totalWithVat * (discount / 100);
@@ -297,20 +308,6 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
       }
   };
 
-  // When VAT mode changes, recalculate all items
-  useEffect(() => {
-    const newItems = items.map(item => {
-        const newItem = { ...item };
-        recalculateItemTotal(newItem);
-        return newItem;
-    });
-    // Only update if totals changed to avoid loop, but here logic depends on formData.isVatInclusive
-    // We can't compare easily, but setting items triggers re-render.
-    // This effect runs when formData.isVatInclusive changes.
-    // We should be careful not to create infinite loop.
-    // Actually, we can just do this calculation in render or when toggling the switch.
-  }, [formData.isVatInclusive]); 
-
   const handleVatInclusiveChange = (checked: boolean) => {
       setFormData(prev => ({ ...prev, isVatInclusive: checked }));
       setIsDirty(true);
@@ -318,23 +315,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
       // Recalculate all items immediately
       const newItems = items.map(item => {
           const newItem = { ...item };
-          // We need to pass the NEW isVatInclusive value, but state update is async.
-          // So we replicate logic here with 'checked' value
-          const qty = Number(newItem.quantity);
-          const price = Number(newItem.unitPrice);
-          const discount = Number(newItem.discount);
-          const vatRate = Number(newItem.vatRate);
-          
-          if (checked) {
-              const totalWithVat = qty * price;
-              const discountAmount = totalWithVat * (discount / 100);
-              const totalWithVatAfterDiscount = totalWithVat - discountAmount;
-              newItem.totalAmount = totalWithVatAfterDiscount / (1 + vatRate / 100);
-          } else {
-              const base = qty * price;
-              const discountAmount = base * (discount / 100);
-              newItem.totalAmount = base - discountAmount;
-          }
+          recalculateItemTotal(newItem, checked);
           return newItem;
       });
       setItems(newItems);
@@ -391,8 +372,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
 
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(initialData?.updatedAt ? new Date(initialData.updatedAt).toISOString() : null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (status: string = "DRAFT") => {
     setLoading(true);
     
     try {
@@ -417,6 +397,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
         exchangeRate: Number(formData.exchangeRate),
         discount: Number(formData.discount),
         relatedId: formData.relatedId,
+        status,
         items: items.map(item => ({
           description: item.description,
           quantity: Number(item.quantity),
@@ -456,12 +437,20 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
         }
       }
       
-      playSwoosh();
       setIsDirty(false);
+      // We don't need to manually redirect if the server action handles it, 
+      // but typically server actions return data and we redirect on client.
+      // If server action throws RedirectError, it's caught here.
+      // Let's modify the catch block.
+      
       router.push("/invoices");
       router.refresh();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (err.message === "NEXT_REDIRECT") {
+          // This is expected behavior from redirect() in Server Actions
+          return;
+      }
       if (err instanceof Error && err.message.includes("Konflikt")) {
           alert(err.message);
       } else {
@@ -503,16 +492,23 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
 
   return (
     <TooltipProvider>
-      <form onSubmit={handleSubmit} className="space-y-8 max-w-6xl mx-auto p-6 bg-background">
-      <div className="flex justify-between items-center">
+      <div className="space-y-8 max-w-6xl mx-auto p-6 bg-background pb-20">
+       <div className="flex items-center justify-between mb-6 sticky top-16 bg-background/95 backdrop-blur z-30 py-4 border-b">
         <h1 className="text-3xl font-bold">
-           {initialData ? `Úprava / Nová (${formData.type})` : "Nová faktura"}
+            {initialData ? "Úprava" : "Nová"} ({formData.type})
         </h1>
-        <div className="space-x-2">
-          <button type="button" onClick={handleCancel} className="px-4 py-2 border rounded hover:bg-muted">Zrušit</button>
-          <button type="submit" disabled={loading} className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90">
-            {loading ? "Ukládám..." : "Uložit doklad"}
-          </button>
+        <div className="flex gap-2">
+            <Button variant="outline" onClick={() => router.back()}>
+                Zrušit
+            </Button>
+            <Button variant="secondary" onClick={() => handleSubmit("DRAFT")} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="mr-2">💾</span>}
+                Uložit koncept
+            </Button>
+            <Button onClick={() => handleSubmit("ISSUED")} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="mr-2">✓</span>}
+                Vystavit doklad
+            </Button>
         </div>
       </div>
 
@@ -1009,7 +1005,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
           <DialogHeader>
             <DialogTitle>AI Generátor popisu</DialogTitle>
             <DialogDescription>
-              Zadejte krátký popis služby (např. "tvorba webu 3 dny") a AI navrhne profesionální textaci.
+              Zadejte krátký popis služby (např. &quot;tvorba webu 3 dny&quot;) a AI navrhne profesionální textaci.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -1040,7 +1036,7 @@ export default function InvoiceEditor({ clients, bankDetails, cnbRates = {}, ini
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      </form>
+      </div>
     </TooltipProvider>
   );
 }

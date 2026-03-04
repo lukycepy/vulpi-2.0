@@ -65,7 +65,7 @@ export function DownloadPDFButton({ invoice, qrCodeUrl }: DownloadPDFButtonProps
         ) : (
           <>
             <Download className="mr-2 h-4 w-4" />
-            Stáhnout PDF
+            PDF
           </>
         )
       }

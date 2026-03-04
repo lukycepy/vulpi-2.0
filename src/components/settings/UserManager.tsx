@@ -30,9 +30,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, UserPlus, Search, LogIn, Loader2, Lock } from "lucide-react";
-import { adminResetPassword } from "@/actions/admin-users";
+import { adminResetPassword, adminUpdateUserProfile } from "@/actions/admin-users";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Edit } from "lucide-react";
 
 interface UserManagerProps {
   memberships: (Membership & { user: User; roleDefinition: RoleDefinition | null })[];
@@ -50,6 +51,50 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("");
   const [isInviting, setIsInviting] = useState(false);
+
+  // Edit User State
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFormData, setEditFormData] = useState({
+      firstName: "",
+      lastName: "",
+      email: "",
+      username: "",
+      timezone: "",
+      password: ""
+  });
+  const [isSavingUser, setIsSavingUser] = useState(false);
+
+  const handleEditClick = (user: User) => {
+      setEditingUser(user);
+      setEditFormData({
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          email: user.email,
+          username: user.username || "",
+          timezone: user.timezone || "",
+          password: ""
+      });
+      setIsEditOpen(true);
+  };
+
+  const handleEditSave = async () => {
+      if (!editingUser) return;
+      
+      const orgId = memberships[0]?.organizationId;
+      if (!orgId) return;
+
+      setIsSavingUser(true);
+      try {
+          await adminUpdateUserProfile(editingUser.id, orgId, editFormData);
+          toast({ title: "Uloženo", description: "Profil uživatele byl aktualizován." });
+          setIsEditOpen(false);
+      } catch (error: any) {
+          toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      } finally {
+          setIsSavingUser(false);
+      }
+  };
 
   const handleInvite = async () => {
     if (!inviteEmail || !inviteRole) {
@@ -177,12 +222,13 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
                 </TableCell>
                 <TableCell>
                   <Select 
-                    defaultValue={membership.roleDefId} 
-                    onValueChange={(val) => handleRoleChange(membership.id, val)}
+                    // Try to find roleDefId, if null, try to find a role definition that matches the legacy 'role' string
+                    defaultValue={membership.roleDefId || roles.find(r => r.name === membership.role)?.id || undefined} 
+                    onValueChange={(val: string) => handleRoleChange(membership.id, val)}
                     disabled={membership.user.id === currentUserId} // Prevent changing own role effectively locking self out
                   >
                     <SelectTrigger className="w-[180px]">
-                      <SelectValue />
+                      <SelectValue placeholder={membership.role || "Vyberte roli"} />
                     </SelectTrigger>
                     <SelectContent>
                       {roles.map((role) => (
@@ -195,6 +241,14 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleEditClick(membership.user)}
+                        title="Upravit profil"
+                    >
+                        <Edit className="h-4 w-4" />
+                    </Button>
                     {canImpersonate && membership.user.id !== currentUserId && (
                         <Button 
                             variant="ghost" 
@@ -268,6 +322,76 @@ export function UserManager({ memberships, roles, currentUserId, canImpersonate 
             <Button onClick={handleInvite} disabled={isInviting}>
               {isInviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Pozvat uživatele
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Upravit uživatele</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="edit-firstName">Jméno</Label>
+                    <Input 
+                        id="edit-firstName" 
+                        value={editFormData.firstName} 
+                        onChange={(e) => setEditFormData({...editFormData, firstName: e.target.value})} 
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="edit-lastName">Příjmení</Label>
+                    <Input 
+                        id="edit-lastName" 
+                        value={editFormData.lastName} 
+                        onChange={(e) => setEditFormData({...editFormData, lastName: e.target.value})} 
+                    />
+                </div>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input 
+                    id="edit-email" 
+                    type="email"
+                    value={editFormData.email} 
+                    onChange={(e) => setEditFormData({...editFormData, email: e.target.value})} 
+                />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="edit-username">Uživatelské jméno</Label>
+                <Input 
+                    id="edit-username" 
+                    value={editFormData.username} 
+                    onChange={(e) => setEditFormData({...editFormData, username: e.target.value})} 
+                />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="edit-timezone">Časové pásmo</Label>
+                <Input 
+                    id="edit-timezone" 
+                    value={editFormData.timezone} 
+                    onChange={(e) => setEditFormData({...editFormData, timezone: e.target.value})} 
+                />
+            </div>
+            <div className="space-y-2 pt-2 border-t">
+                <Label htmlFor="edit-password">Nové heslo (nevyplňujte, pokud nechcete měnit)</Label>
+                <Input 
+                    id="edit-password" 
+                    type="password"
+                    value={editFormData.password} 
+                    onChange={(e) => setEditFormData({...editFormData, password: e.target.value})} 
+                    placeholder="Nové heslo"
+                />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Zrušit</Button>
+            <Button onClick={handleEditSave} disabled={isSavingUser}>
+                {isSavingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Uložit
             </Button>
           </DialogFooter>
         </DialogContent>

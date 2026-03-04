@@ -318,7 +318,7 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
                               value={overrides.invoice || ""} 
                               onChange={(e) => updateOverride("invoice", e.target.value)} 
                           />
-                           <p className="text-xs text-muted-foreground">Přepíše "Faktura". Např. "Daňový doklad", "Vyúčtování"</p>
+                           <p className="text-xs text-muted-foreground">Přepíše &quot;Faktura&quot;. Např. &quot;Daňový doklad&quot;, &quot;Vyúčtování&quot;</p>
                       </div>
                       <div className="space-y-2">
                           <Label htmlFor="override-dueDate">Datum splatnosti</Label>
@@ -328,7 +328,7 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
                               value={overrides.dueAt || ""} 
                               onChange={(e) => updateOverride("dueAt", e.target.value)} 
                           />
-                          <p className="text-xs text-muted-foreground">Přepíše "Datum splatnosti". Např. "Uhradit do", "Splatnost"</p>
+                          <p className="text-xs text-muted-foreground">Přepíše &quot;Datum splatnosti&quot;. Např. &quot;Uhradit do&quot;, &quot;Splatnost&quot;</p>
                       </div>
                       <div className="space-y-2">
                           <Label htmlFor="override-total">Celkem</Label>
@@ -338,7 +338,7 @@ export function TemplateEditor({ template, organizationId }: TemplateEditorProps
                               value={overrides.total || ""} 
                               onChange={(e) => updateOverride("total", e.target.value)} 
                           />
-                          <p className="text-xs text-muted-foreground">Přepíše "Celkem". Např. "K úhradě", "Suma"</p>
+                          <p className="text-xs text-muted-foreground">Přepíše &quot;Celkem&quot;. Např. &quot;K úhradě&quot;, &quot;Suma&quot;</p>
                       </div>
                        <div className="space-y-2">
                           <Label htmlFor="override-supplier">Dodavatel</Label>

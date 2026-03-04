@@ -63,7 +63,7 @@ export function ProjectMilestones({ project }: ProjectMilestonesProps) {
 
   const openEditDialog = (milestone: ProjectMilestone) => {
     setEditingMilestone(milestone);
-    setEditName(milestone.name);
+    setEditName(milestone.title);
     setEditAmount(milestone.amount.toString());
   };
 
@@ -228,7 +228,7 @@ export function ProjectMilestones({ project }: ProjectMilestonesProps) {
                     />
                   </TableCell>
                   <TableCell className={milestone.isCompleted ? "line-through text-muted-foreground font-medium" : "font-medium"}>
-                    {milestone.name}
+                    {milestone.title}
                   </TableCell>
                   <TableCell className="text-right">{formatCurrency(milestone.amount)}</TableCell>
                   <TableCell className="text-center">

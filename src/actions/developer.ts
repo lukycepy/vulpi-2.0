@@ -116,7 +116,7 @@ export async function getWebhookLogs(webhookId: string) {
 
     return prisma.webhookLog.findMany({
         where: { webhookId },
-        orderBy: { timestamp: "desc" },
+        orderBy: { createdAt: "desc" },
         take: 50
     });
 }

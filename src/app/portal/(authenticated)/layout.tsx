@@ -13,12 +13,10 @@ export default async function PortalLayout({ children }: { children: React.React
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <PortalHeader 
         clientName={client.name} 
-        clientLogo={client.logoUrl}
+        clientLogo={null}
         organization={{
           name: client.organization.name,
-          logoUrl: client.organization.logoUrl,
-          primaryColor: client.organization.primaryColor,
-          secondaryColor: client.organization.secondaryColor
+          logoUrl: client.organization.logoUrl
         }}
       />
       <main className="container mx-auto px-4 py-8">

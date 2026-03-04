@@ -122,7 +122,7 @@ export function ApiKeyManager({ initialApiKeys }: ApiKeyManagerProps) {
               <DialogHeader>
                 <DialogTitle>Vytvořit nový API klíč</DialogTitle>
                 <DialogDescription>
-                  Zadejte název pro identifikaci tohoto klíče (např. "Produkční server", "Mobilní aplikace").
+                  Zadejte název pro identifikaci tohoto klíče (např. &quot;Produkční server&quot;, &quot;Mobilní aplikace&quot;).
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">

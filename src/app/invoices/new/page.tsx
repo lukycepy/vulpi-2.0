@@ -46,9 +46,19 @@ export default async function NewInvoicePage(props: PageProps) {
     generateNextInvoiceNumber(orgId),
     prisma.organization.findUnique({
       where: { id: orgId },
-      select: { defaultGdprClause: true, defaultSlaText: true }
+      select: { 
+        defaultGdprClause: true, 
+        defaultSlaText: true,
+        vatPayerStatus: true,
+        defaultVatMode: true
+      }
     })
   ]);
+
+  const cnbRatesByCode: Record<string, number> = Object.fromEntries(
+    cnbRates.map((r) => [r.code, r.rate / r.amount])
+  );
+  cnbRatesByCode.CZK = 1;
 
   let initialData: any = null;
 
@@ -119,7 +129,7 @@ export default async function NewInvoicePage(props: PageProps) {
       <InvoiceEditor 
         clients={clients} 
         bankDetails={bankDetails} 
-        cnbRates={cnbRates}
+        cnbRates={cnbRatesByCode}
         initialData={initialData}
         customFields={customFields}
         organization={organization || undefined}

@@ -5,6 +5,7 @@ import { getActiveTimeEntry } from "@/services/time-tracking";
 import TimerWidget from "@/components/time-tracking/TimerWidget";
 import { getCurrentUser, getUserPermissions, getCurrentMembership } from "@/lib/auth-permissions";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
+import { OrganizationSwitcher } from "@/components/ui/OrganizationSwitcher";
 import { switchOrganization } from "@/actions/auth";
 import { 
   BarChart, 
@@ -94,7 +95,15 @@ export default async function Header() {
           </div>
 
           <div className="hidden md:block">
-            <Breadcrumbs />
+            <div className="flex items-center gap-4">
+                {userMemberships.length > 1 && currentMembership && (
+                    <OrganizationSwitcher 
+                        organizations={userMemberships.map(m => m.organization)}
+                        currentOrganizationId={currentMembership.organizationId}
+                    />
+                )}
+                <Breadcrumbs />
+            </div>
           </div>
         </div>
 
@@ -105,6 +114,7 @@ export default async function Header() {
             </div>
           )}
           
+          <ThemeToggle />
           <CoffeeBreakButton />
 
           {user ? (
@@ -134,18 +144,24 @@ export default async function Header() {
                         <span>Můj profil</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/settings/organization">
-                        <Briefcase className="mr-2 h-4 w-4" />
-                        <span>Nastavení organizace</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/settings/integrations">
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        <span>Bankovní integrace</span>
-                    </Link>
-                  </DropdownMenuItem>
+                  
+                  {canManageSettings && (
+                    <DropdownMenuItem asChild>
+                        <Link href="/settings/organization">
+                            <Briefcase className="mr-2 h-4 w-4" />
+                            <span>Nastavení organizace</span>
+                        </Link>
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {permissions.includes("manage_bank") && (
+                    <DropdownMenuItem asChild>
+                        <Link href="/settings/integrations">
+                            <CreditCard className="mr-2 h-4 w-4" />
+                            <span>Bankovní integrace</span>
+                        </Link>
+                    </DropdownMenuItem>
+                  )}
 
                   {userMemberships.length > 1 && (
                     <>

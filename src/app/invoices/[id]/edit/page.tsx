@@ -39,7 +39,7 @@ export default async function EditInvoicePage(props: PageProps) {
 
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    include: { items: true, customFieldValues: true }
+    include: { items: true, customFields: true } // Changed from customFieldValues to customFields
   });
 
   if (!invoice) {
@@ -80,6 +80,11 @@ export default async function EditInvoicePage(props: PageProps) {
     })
   ]);
 
+  const cnbRatesByCode: Record<string, number> = Object.fromEntries(
+    cnbRates.map((r) => [r.code, r.rate / r.amount])
+  );
+  cnbRatesByCode.CZK = 1;
+
   // Format dates for the form (YYYY-MM-DD)
   const initialData = {
     ...invoice,
@@ -94,7 +99,7 @@ export default async function EditInvoicePage(props: PageProps) {
       discount: Number(item.discount),
       totalAmount: Number(item.totalAmount)
     })),
-    customFields: invoice.customFieldValues // Pass existing values
+    customFields: invoice.customFields // Changed from customFieldValues to customFields
   };
 
   return (
@@ -102,7 +107,7 @@ export default async function EditInvoicePage(props: PageProps) {
       <InvoiceEditor 
         clients={clients} 
         bankDetails={bankDetails} 
-        cnbRates={cnbRates}
+        cnbRates={cnbRatesByCode}
         customFields={customFields}
         initialData={initialData}
         organization={organization || undefined}

@@ -28,7 +28,8 @@ const routeNameMap: Record<string, string> = {
   "categories": "Kategorie",
   "vehicles": "Vozidla",
   "portal": "Klientský portál",
-  "login": "Přihlášení"
+  "login": "Přihlášení",
+  "profile": "Profil"
 }
 
 export function Breadcrumbs() {

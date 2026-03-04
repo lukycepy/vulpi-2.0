@@ -138,7 +138,7 @@ export function DangerZoneClient({ organizationId }: DangerZoneClientProps) {
                             Tuto akci <strong>nelze vzít zpět</strong>.
                             Trvale odstraníte všechny faktury, položky, výdaje, bankovní pohyby a záznamy práce pro tuto organizaci.
                             <br /><br />
-                            Používejte pouze pokud chcete začít "načisto" po testování.
+                            Používejte pouze pokud chcete začít &quot;načisto&quot; po testování.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

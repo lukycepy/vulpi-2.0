@@ -17,7 +17,7 @@ interface ProfileFormProps {
   user: User;
 }
 
-export function ProfileForm({ user }: ProfileFormProps) {
+export function ProfileForm({ user }: { user: any }) {
   const [formData, setFormData] = useState({
     firstName: user.firstName || "",
     lastName: user.lastName || "",

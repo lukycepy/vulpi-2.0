@@ -118,7 +118,7 @@ export function TemplateBuilder({ initialTemplate, organizationId }: TemplateBui
                     <Label htmlFor="logoPosition">Pozice loga</Label>
                     <Select 
                         value={template.logoPosition} 
-                        onValueChange={(val) => handleChange("logoPosition", val)}
+                        onValueChange={(val: string) => handleChange("logoPosition", val)}
                     >
                         <SelectTrigger>
                             <SelectValue />

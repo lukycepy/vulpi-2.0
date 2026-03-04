@@ -67,10 +67,10 @@ export async function uploadAttachment(formData: FormData) {
   await prisma.attachment.create({
     data: {
       invoiceId,
-      filename: file.name,
-      mimeType: file.type,
-      url: fileUrl,
-      size: file.size,
+      fileName: file.name,
+      fileType: file.type,
+      fileUrl,
+      fileSize: file.size,
     },
   });
 
@@ -104,7 +104,7 @@ export async function deleteAttachment(attachmentId: string) {
   // Delete file from disk
   // Construct absolute path from relative URL
   // url: /uploads/attachments/filename.ext
-  const relativePath = attachment.url.startsWith("/") ? attachment.url.slice(1) : attachment.url;
+  const relativePath = attachment.fileUrl.startsWith("/") ? attachment.fileUrl.slice(1) : attachment.fileUrl;
   const absolutePath = join(process.cwd(), "public", relativePath);
 
   try {

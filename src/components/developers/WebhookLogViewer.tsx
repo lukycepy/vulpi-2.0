@@ -80,7 +80,7 @@ export function WebhookLogViewer({ webhookId, open, onOpenChange }: WebhookLogVi
                       {log.responseStatusCode}
                     </Badge>
                     <span className="text-sm text-muted-foreground">
-                      {format(new Date(log.timestamp), "d. M. yyyy HH:mm:ss", { locale: cs })}
+                      {format(new Date(log.createdAt), "d. M. yyyy HH:mm:ss", { locale: cs })}
                     </span>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                        {(() => {

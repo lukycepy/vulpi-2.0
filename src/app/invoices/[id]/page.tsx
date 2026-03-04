@@ -136,12 +136,6 @@ export default async function InvoiceDetailPage(props: PageProps) {
         </div>
       </div>
           
-          {invoice.type === 'FAKTURA' && (
-            <Link href={`/invoices/new?from=${invoice.id}&mode=credit_note`} className="px-4 py-2 border border-red-200 text-red-700 rounded hover:bg-red-50 text-sm flex items-center">
-              Vytvořit dobropis
-            </Link>
-          )}
-          
           {invoice.type === 'NABIDKA' && (
              <Link href={`/invoices/new?from=${invoice.id}&mode=convert`} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm flex items-center shadow-sm">
                <FileText className="w-4 h-4 mr-2" />

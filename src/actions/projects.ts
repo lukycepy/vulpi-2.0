@@ -163,10 +163,7 @@ export async function createMilestone(projectId: string, data: { name: string; a
     data: {
       projectId,
       title: data.name,
-      // amount: data.amount, // Schema says title, dueDate, isCompleted. No amount?
-      // Wait, schema says: title, dueDate, isCompleted.
-      // But the action tries to create with name and amount.
-      // Let's check schema again.
+      amount: data.amount,
     }
   });
 
@@ -192,7 +189,7 @@ export async function updateMilestone(milestoneId: string, data: { name?: string
     where: { id: milestoneId },
     data: {
       title: data.name,
-      // amount: data.amount // Still need to fix this if 'amount' is missing in schema
+      amount: data.amount,
     }
   });
 
@@ -210,7 +207,7 @@ export async function deleteMilestone(milestoneId: string) {
   });
 
   if (!milestone) throw new Error("Milník nenalezen");
-  // if (milestone.isBilled) throw new Error("Nelze smazat vyfakturovaný milník"); // isBilled missing in schema
+  if (milestone.isBilled) throw new Error("Nelze smazat vyfakturovaný milník");
 
   const hasAccess = await hasPermission(user.id, milestone.project.organizationId, "manage_projects");
   if (!hasAccess) throw new Error("Nemáte oprávnění spravovat projekty");
@@ -284,20 +281,24 @@ export async function billMilestone(milestoneId: string) {
       clientId: clientId,
       projectId: milestone.projectId,
       number: number,
+      type: "FAKTURA",
       status: "DRAFT",
       issuedAt: new Date(),
       dueAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
+      currency: "CZK",
+      vatMode: milestone.project.organization.vatPayerStatus === "PAYER" ? "STANDARD" : "NON_PAYER",
       items: {
         create: {
-          description: `Fakturace milníku: ${milestone.name}`,
+          description: `Fakturace milníku: ${milestone.title}`,
           quantity: 1,
+          unit: "ks",
           unitPrice: milestone.amount,
           totalAmount: milestone.amount,
           vatRate: 21 // Default VAT
         }
       },
-      totalAmount: milestone.amount * 1.21, // Approx with VAT
-      totalVat: milestone.amount * 0.21,
+      totalAmount: milestone.amount, // Stored as net in our engine; VAT tracked separately
+      totalVat: milestone.project.organization.vatPayerStatus === "PAYER" ? milestone.amount * 0.21 : 0,
     }
   });
 

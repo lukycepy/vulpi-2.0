@@ -22,7 +22,7 @@ export default async function ClientsPage() {
     address: client.address,
     taxId: client.taxId,
     vatId: client.vatId,
-    tags: client.tags,
+    tags: client.tags.map((tag) => ({ ...tag, color: tag.color ?? "#64748b" })),
     contacts: client.contacts,
     stats: client.stats
   }));
@@ -30,7 +30,7 @@ export default async function ClientsPage() {
   const serializedTags = availableTags.map(tag => ({
     id: tag.id,
     name: tag.name,
-    color: tag.color
+    color: tag.color ?? "#64748b"
   }));
 
   return (

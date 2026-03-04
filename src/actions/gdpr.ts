@@ -28,7 +28,7 @@ export async function deleteUserAccount() {
 
       // 5. ImpersonationLogs
       await tx.impersonationLog.deleteMany({ where: { impersonatorId: user.id } });
-      await tx.impersonationLog.deleteMany({ where: { impersonatedId: user.id } });
+      await tx.impersonationLog.deleteMany({ where: { targetUserId: user.id } });
 
       // 6. AuditLogs
       await tx.auditLog.deleteMany({ where: { userId: user.id } });
@@ -83,7 +83,6 @@ export async function exportClientData(clientId: string) {
   const auditLogs = await prisma.auditLog.findMany({
     where: { 
       organizationId: client.organizationId,
-      entityType: "CLIENT",
       entityId: clientId
     }
   });

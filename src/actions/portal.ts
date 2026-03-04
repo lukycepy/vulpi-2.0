@@ -96,6 +96,61 @@ export async function getClientInvoices(clientId: string) {
   }
 }
 
+import { sendEmail } from "@/actions/email";
+
+export async function sendPortalLink(clientId: string) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    include: { organization: true }
+  });
+
+  if (!client) throw new Error("Client not found");
+
+  const membership = await prisma.membership.findFirst({
+    where: { userId: user.id, organizationId: client.organizationId }
+  });
+
+  if (!membership) throw new Error("Unauthorized");
+
+  if (!client.email) {
+      throw new Error("Klient nemá vyplněný email.");
+  }
+
+  // Ensure access code exists
+  let accessCode = client.accessCode;
+  if (!accessCode) {
+      // Generate simple code if missing
+      accessCode = Math.random().toString(36).slice(-8).toUpperCase();
+      await prisma.client.update({
+          where: { id: clientId },
+          data: { accessCode, webAccess: true }
+      });
+  } else if (!client.webAccess) {
+      await prisma.client.update({
+          where: { id: clientId },
+          data: { webAccess: true }
+      });
+  }
+
+  const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/portal/login`;
+  
+  // Send email
+  try {
+      await sendEmail({
+          to: client.email,
+          subject: `Přístup do klientského portálu - ${client.organization.name}`,
+          text: `Dobrý den,\n\npro přístup k Vašim fakturám a dokumentům využijte klientský portál.\n\nAdresa: ${portalUrl}\nPřístupový kód: ${accessCode}\n\nS pozdravem,\n${client.organization.name}`
+      });
+      return { success: true };
+  } catch (error: any) {
+      console.error("Failed to send portal link:", error);
+      throw new Error("Nepodařilo se odeslat email: " + error.message);
+  }
+}
+
 export async function createDispute(invoiceId: string, message: string) {
   try {
     const client = await getClientFromToken();

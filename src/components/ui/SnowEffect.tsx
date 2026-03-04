@@ -18,56 +18,70 @@ export function SnowEffect() {
     canvas.width = width;
     canvas.height = height;
 
-    const snowflakes: { x: number; y: number; r: number; d: number }[] = [];
-    const maxFlakes = 100;
+    const snowflakes: { x: number; y: number; r: number; d: number; speed: number; opacity: number }[] = [];
+    const maxFlakes = 150; // Increased count
 
     for (let i = 0; i < maxFlakes; i++) {
       snowflakes.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        r: Math.random() * 4 + 1,
+        r: Math.random() * 3 + 1, // Varied size
         d: Math.random() * maxFlakes,
+        speed: Math.random() * 1 + 0.5, // Varied speed
+        opacity: Math.random() * 0.5 + 0.3 // Varied opacity
       });
     }
 
     let animationFrameId: number;
+    let angle = 0;
 
     function draw() {
       if (!ctx || !canvas) return;
       ctx.clearRect(0, 0, width, height);
+      
       ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
       ctx.beginPath();
 
       for (let i = 0; i < maxFlakes; i++) {
         const f = snowflakes[i];
+        ctx.fillStyle = `rgba(255, 255, 255, ${f.opacity})`;
         ctx.moveTo(f.x, f.y);
         ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2, true);
+        ctx.fill(); // Fill each flake individually for opacity
+        ctx.beginPath(); // Start new path
       }
-      ctx.fill();
+      
       move();
       animationFrameId = requestAnimationFrame(draw);
     }
 
-    let angle = 0;
     function move() {
       angle += 0.01;
       for (let i = 0; i < maxFlakes; i++) {
         const f = snowflakes[i];
-        f.y += Math.pow(f.d, 2) + 1;
-        f.x += Math.sin(angle) * 2;
+        // Gravity
+        f.y += Math.pow(f.d, 2) * 0.0005 + f.speed; // Smoother fall
+        // Wind
+        f.x += Math.sin(angle + f.d) * 0.5;
 
+        // Reset if out of view
         if (f.y > height) {
           snowflakes[i] = {
             x: Math.random() * width,
-            y: 0,
+            y: -10, // Start slightly above
             r: f.r,
             d: f.d,
+            speed: f.speed,
+            opacity: f.opacity
           };
         }
+        
+        // Wrap around X
+        if (f.x > width + 5) f.x = -5;
+        if (f.x < -5) f.x = width + 5;
       }
     }
 
-    // Adjust for resize
     const handleResize = () => {
         width = window.innerWidth;
         height = window.innerHeight;

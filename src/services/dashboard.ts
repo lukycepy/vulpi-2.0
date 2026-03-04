@@ -14,6 +14,7 @@ export interface DashboardMetrics {
   totalRevenue: number;
   vatCollected: number;
   netProfit: number;
+  totalExpenses: number;
   vatToPayQuarterly: number;
   ltv: number;
   vatLimitPercentage: number;
@@ -21,6 +22,14 @@ export interface DashboardMetrics {
   vatLimit: number;
   incomeThisYear: number;
   expensesThisYear: number;
+  // UI extras
+  revenueChange: number;
+  invoiceCount: number;
+  invoiceCountChange: number;
+  newClientsCount: number;
+  overdueAmount: number;
+  overdueCount: number;
+  last12MonthsTurnover: number;
 }
 
 export interface CashflowDataPoint {
@@ -173,17 +182,85 @@ export async function getDashboardMetrics(
   const allTimeRevenue = (allTimeInvoices._sum.totalAmount || 0) - (allTimeInvoices._sum.totalVat || 0);
   const ltv = clientsCount > 0 ? allTimeRevenue / clientsCount : 0;
 
+  // Extras for UI widgets
+  // Determine current period
+  const now = new Date();
+  const currentFrom = dateRange?.from ?? new Date(now.getFullYear(), now.getMonth(), 1);
+  const currentTo = dateRange?.to ?? new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const periodMs = currentTo.getTime() - currentFrom.getTime();
+  const prevFrom = new Date(currentFrom.getTime() - periodMs);
+  const prevTo = new Date(currentTo.getTime() - periodMs);
+
+  // Current period revenue and invoice count
+  const [currentInvoices, previousInvoices] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: { not: 'DRAFT' },
+        issuedAt: { gte: currentFrom, lte: currentTo },
+        ...departmentFilter
+      },
+      select: { totalAmount: true, totalVat: true, id: true }
+    }),
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: { not: 'DRAFT' },
+        issuedAt: { gte: prevFrom, lte: prevTo },
+        ...departmentFilter
+      },
+      select: { totalAmount: true, totalVat: true, id: true }
+    })
+  ]);
+
+  const currentRevenue = currentInvoices.reduce((sum, inv) => sum + (inv.totalAmount - inv.totalVat), 0);
+  const previousRevenue = previousInvoices.reduce((sum, inv) => sum + (inv.totalAmount - inv.totalVat), 0);
+  const invoiceCount = currentInvoices.length;
+  const previousCount = previousInvoices.length;
+
+  const revenueChange = previousRevenue === 0 ? (currentRevenue > 0 ? 100 : 0) : ((currentRevenue - previousRevenue) / previousRevenue) * 100;
+  const invoiceCountChange = previousCount === 0 ? (invoiceCount > 0 ? 100 : 0) : ((invoiceCount - previousCount) / previousCount) * 100;
+
+  // New clients in current period
+  const newClientsCount = await prisma.client.count({
+    where: {
+      organizationId,
+      createdAt: { gte: currentFrom, lte: currentTo }
+    }
+  });
+
+  // Overdue invoices
+  const overdue = await prisma.invoice.findMany({
+    where: {
+      organizationId,
+      status: { not: 'PAID' },
+      dueAt: { lt: new Date() },
+      ...departmentFilter
+    },
+    select: { totalAmount: true, totalVat: true, id: true }
+  });
+  const overdueAmount = overdue.reduce((sum, inv) => sum + (inv.totalAmount - inv.totalVat), 0);
+  const overdueCount = overdue.length;
+
   return {
     totalRevenue,
     vatCollected,
     netProfit: totalRevenue - totalExpenses,
+    totalExpenses,
     vatToPayQuarterly: vatCollected - vatPaid, // Simplified approximation
     ltv,
     vatLimitPercentage,
     vatTurnover12m,
     vatLimit,
     incomeThisYear,
-    expensesThisYear
+    expensesThisYear,
+    revenueChange,
+    invoiceCount,
+    invoiceCountChange,
+    newClientsCount,
+    overdueAmount,
+    overdueCount,
+    last12MonthsTurnover: vatTurnover12m
   };
 }
 

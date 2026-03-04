@@ -71,7 +71,7 @@ export default async function BankingPage() {
         <div className="flex gap-2">
             <form action={async () => {
               "use server";
-              await runBankMatching();
+              await runBankMatching(orgId);
             }}>
                 <Button type="submit">
                     <RefreshCw className="mr-2 h-4 w-4" />

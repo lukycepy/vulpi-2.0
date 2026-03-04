@@ -37,6 +37,12 @@ export async function updateOrganization(data: {
   smtpUser?: string;
   smtpPassword?: string;
   smtpFrom?: string;
+  // IMAP
+  imapHost?: string;
+  imapPort?: string | number;
+  imapUser?: string;
+  imapPassword?: string;
+  imapEnabled?: boolean;
 }) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
@@ -84,6 +90,11 @@ export async function updateOrganization(data: {
       smtpUser: data.smtpUser,
       smtpPassword: data.smtpPassword, // Should be encrypted in real app or handled securely
       smtpFrom: data.smtpFrom,
+      imapHost: data.imapHost,
+      imapPort: data.imapPort ? parseInt(data.imapPort.toString()) : undefined,
+      imapUser: data.imapUser,
+      imapPassword: data.imapPassword,
+      imapEnabled: data.imapEnabled,
     },
   });
 

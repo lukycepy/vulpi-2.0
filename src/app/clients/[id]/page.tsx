@@ -15,12 +15,13 @@ export default async function ClientDetailPage({
   params,
   searchParams 
 }: { 
-  params: { id: string };
-  searchParams: { tab?: string };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
+  const { id } = await params;
   const [client, contracts] = await Promise.all([
-    getClient(params.id),
-    getContracts(params.id)
+    getClient(id),
+    getContracts(id)
   ]);
   
   if (!client) {
@@ -46,27 +47,26 @@ export default async function ClientDetailPage({
                 {client.vatId && <div className="flex items-center gap-1"><Building className="w-3 h-3"/> DIČ: {client.vatId}</div>}
             </div>
         </div>
-        <Button variant="outline">
-            <Edit className="w-4 h-4 mr-2" />
-            Upravit
-        </Button>
         <ClientActions clientId={client.id} isLegalHold={client.organization?.isLegalHold} />
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {client.tags.map(tag => (
-            <Badge 
-                key={tag.id} 
-                variant="secondary"
-                style={{ 
-                    backgroundColor: tag.color + '20', 
-                    color: tag.color, 
-                    borderColor: tag.color + '40' 
-                }}
+        {client.tags.map((tag) => {
+          const color = tag.color ?? "#64748b";
+          return (
+            <Badge
+              key={tag.id}
+              variant="secondary"
+              style={{
+                backgroundColor: `${color}20`,
+                color,
+                borderColor: `${color}40`,
+              }}
             >
-                {tag.name}
+              {tag.name}
             </Badge>
-        ))}
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -120,7 +120,7 @@ export default async function ClientDetailPage({
         </Card>
       </div>
 
-      <Tabs defaultValue={searchParams.tab || "details"} className="w-full">
+      <Tabs defaultValue={(await searchParams).tab || "details"} className="w-full">
         <TabsList>
             <TabsTrigger value="details">Detailní informace</TabsTrigger>
             <TabsTrigger value="contacts">Kontaktní osoby ({client.contacts.length})</TabsTrigger>
@@ -204,7 +204,7 @@ export default async function ClientDetailPage({
                                         {contact.name}
                                         {contact.isPrimary && <Badge variant="secondary" className="text-xs">Hlavní kontakt</Badge>}
                                       </div>
-                                      <div className="text-sm text-muted-foreground">{contact.position}</div>
+                                      <div className="text-sm text-muted-foreground">{contact.role || "-"}</div>
                                   </div>
                                   <div className="text-right text-sm space-y-1 w-full sm:w-auto">
                                       {contact.email && (
@@ -234,9 +234,75 @@ export default async function ClientDetailPage({
 
         <TabsContent value="invoices" className="pt-4">
             <Card>
-                <CardContent className="p-8 text-center text-muted-foreground">
-                    Seznam faktur bude implementován v další fázi.
-                    {/* Placeholder for invoice list */}
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Seznam faktur</CardTitle>
+                    <Button asChild size="sm">
+                        <Link href={`/invoices/new?clientId=${client.id}`}>
+                            Vystavit novou fakturu
+                        </Link>
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-muted/50 text-muted-foreground">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium">Číslo</th>
+                                    <th className="px-4 py-3 font-medium">Vystaveno</th>
+                                    <th className="px-4 py-3 font-medium">Splatnost</th>
+                                    <th className="px-4 py-3 font-medium text-right">Částka</th>
+                                    <th className="px-4 py-3 font-medium text-center">Stav</th>
+                                    <th className="px-4 py-3 font-medium text-right">Akce</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {client.invoices.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                                            Žádné faktury k zobrazení.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    client.invoices.map((inv: any) => (
+                                        <tr key={inv.id} className="hover:bg-muted/50 transition-colors">
+                                            <td className="px-4 py-3 font-medium">
+                                                <Link href={`/invoices/${inv.id}`} className="hover:underline text-primary">
+                                                    {inv.number}
+                                                </Link>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString("cs-CZ") : "-"}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString("cs-CZ") : "-"}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-medium">
+                                                {formatCurrency(inv.totalAmount, inv.currency || "CZK")}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <Badge variant={
+                                                    inv.status === "PAID" ? "default" : 
+                                                    inv.status === "OVERDUE" ? "destructive" : 
+                                                    inv.status === "CANCELLED" ? "outline" : "secondary"
+                                                }>
+                                                    {inv.status === "PAID" ? "Zaplaceno" :
+                                                     inv.status === "OVERDUE" ? "Po splatnosti" :
+                                                     inv.status === "CANCELLED" ? "Zrušeno" :
+                                                     inv.status === "DRAFT" ? "Návrh" :
+                                                     inv.status === "PARTIAL" ? "Částečně" : "Vystaveno"}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <Button variant="ghost" size="sm" asChild>
+                                                    <Link href={`/invoices/${inv.id}`}>Detail</Link>
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </CardContent>
             </Card>
         </TabsContent>

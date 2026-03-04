@@ -23,20 +23,28 @@ export class GeminiOCRProvider implements OCRProvider {
 
   async processReceipt(file: File | Blob): Promise<OCRResult> {
     try {
-      // Use 'gemini-2.5-flash' which is available for this key
-      const model = this.client.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const imagePart = await this.fileToGenerativePart(file);
+      const model = this.client.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const base64Data = Buffer.from(arrayBuffer).toString("base64");
+      
+      const imagePart = {
+        inlineData: {
+          data: base64Data,
+          mimeType: file.type || "image/jpeg",
+        },
+      };
 
       const prompt = `
         Analyze this receipt image and extract the following information in strict JSON format.
         Return ONLY valid JSON, no markdown formatting, no code blocks.
         
         Required fields:
-        - amount: number (total amount)
+        - amount: number (total amount including VAT)
         - currency: string (e.g., CZK, EUR, USD)
         - date: string (YYYY-MM-DD format)
         - supplierName: string
-        - supplierIco: string (Czech identification number if available, otherwise empty string)
+        - supplierIco: string (Czech identification number/IČO if available, otherwise empty string)
         - vatRate: number (main VAT rate in percentage, e.g., 21, 12, or 0)
         - variableSymbol: string (if available)
         
@@ -50,17 +58,23 @@ export class GeminiOCRProvider implements OCRProvider {
       // Clean up the response if it contains markdown code blocks
       const jsonString = text.replace(/```json/g, "").replace(/```/g, "").trim();
       
-      const data = JSON.parse(jsonString);
+      let data;
+      try {
+        data = JSON.parse(jsonString);
+      } catch (e) {
+        console.error("Failed to parse JSON from Gemini:", text);
+        throw new Error("Invalid response format from AI");
+      }
 
       return {
         amount: typeof data.amount === 'number' ? data.amount : 0,
         currency: data.currency || "CZK",
         date: data.date ? new Date(data.date) : new Date(),
-        supplierName: data.supplierName || "Unknown Supplier",
+        supplierName: data.supplierName || "",
         ico: data.supplierIco || "",
         vatRate: typeof data.vatRate === 'number' ? data.vatRate : 21,
         variableSymbol: data.variableSymbol || "",
-        confidence: 0.9, // Gemini usually gives high quality results
+        confidence: 0.9,
         rawText: text
       };
     } catch (error) {

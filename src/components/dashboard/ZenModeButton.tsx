@@ -20,7 +20,7 @@ export function ZenModeButton() {
                         Účetnictví je vyřešeno. Zítra je taky den.
                     </p>
                     <p className="text-sm text-muted-foreground italic">
-                        "Odpočívej, aby tvá mysl byla zítra opět ostrá jako liščí zrak."
+                        &quot;Odpočívej, aby tvá mysl byla zítra opět ostrá jako liščí zrak.&quot;
                     </p>
                     <Button onClick={() => setZenMode(false)} variant="outline" size="lg" className="mt-8">
                         Zpět do práce

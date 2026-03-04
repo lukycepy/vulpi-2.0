@@ -32,14 +32,15 @@ export async function syncInvoiceToCloud(
   }
 
   if (integrations.length > 0) {
-    console.log(`[Cloud Sync] Faktura ${invoice.number} byla synchronizována do: ${integrations.join(", ")}`);
+    void integrations;
   }
 }
 
 async function simulateUpload(provider: string, filename: string) {
   // Simulace asynchronní operace (network request)
   await new Promise((resolve) => setTimeout(resolve, 1500));
-  console.log(`[${provider}] Simulace: Upload souboru ${filename} dokončen.`);
+  void provider;
+  void filename;
 }
 
 export async function uploadInvoiceToGoogleDrive(
@@ -49,7 +50,6 @@ export async function uploadInvoiceToGoogleDrive(
   mimeType: string
 ) {
   if (!organization.googleDriveCredentials) {
-    console.warn("Missing Google Drive credentials for organization", organization.id);
     return;
   }
 
@@ -79,8 +79,6 @@ export async function uploadInvoiceToGoogleDrive(
       fields: 'id',
     });
 
-    console.log('[Google Drive] File Uploaded:', file.data.id);
-    
     await prisma.auditLog.create({
       data: {
         organizationId: organization.id,

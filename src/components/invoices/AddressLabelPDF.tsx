@@ -1,11 +1,22 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 import { Invoice, Organization, Client } from '@prisma/client';
+
+// Register font for Czech characters
+Font.register({
+  family: 'Roboto',
+  fonts: [
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf', fontWeight: 300 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf', fontWeight: 400 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf', fontWeight: 500 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf', fontWeight: 700 },
+  ],
+});
 
 const styles = StyleSheet.create({
   page: {
     padding: 20,
-    fontFamily: 'Helvetica',
+    fontFamily: 'Roboto',
     fontSize: 12,
   },
   sender: {

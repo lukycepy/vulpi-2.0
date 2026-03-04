@@ -29,13 +29,13 @@ export async function syncInvoiceToCloud(
     await simulateUpload("OneDrive", filename);
   }
 
-  if (integrations.length > 0) {
-    console.log(`[Cloud Sync] Faktura ${invoice.number} byla synchronizována do: ${integrations.join(", ")}`);
-  }
+  void integrations;
+  void pdfBuffer;
 }
 
 async function simulateUpload(provider: string, filename: string) {
   // Simulace asynchronní operace (network request)
   await new Promise((resolve) => setTimeout(resolve, 1500));
-  console.log(`[${provider}] Simulace: Upload souboru ${filename} dokončen.`);
+  void provider;
+  void filename;
 }

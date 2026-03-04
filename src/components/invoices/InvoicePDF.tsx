@@ -22,6 +22,12 @@ Font.register({
   ],
 });
 
+// Explicitly register 'Roboto-Bold' alias if used directly in styles
+Font.register({
+  family: 'Roboto-Bold',
+  src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf'
+});
+
 // Fallback font for Chinese (Simulated registration - in real app would need actual TTF url)
 Font.register({
   family: 'NotoSansSC',
@@ -377,13 +383,15 @@ export const InvoicePage = ({ invoice, qrCodeUrl, barcodes }: InvoicePDFProps) =
   const isOverdue = invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && new Date(invoice.dueAt) < new Date();
   const showBarcodes = invoice.template?.showBarcodes ?? false;
   
-  const langCode = (invoice.language as keyof typeof translations) || 'cs';
+  const langCode = (invoice.client.language as keyof typeof translations) || 'cs';
   const baseTranslations = translations[langCode];
 
   // 1. Text Overrides
   let t = { ...baseTranslations };
+  // @ts-ignore
   if (invoice.template?.textOverrides) {
     try {
+      // @ts-ignore
       const overrides = JSON.parse(invoice.template.textOverrides);
       t = { ...t, ...overrides };
     } catch (e) {
@@ -777,9 +785,16 @@ export const InvoicePage = ({ invoice, qrCodeUrl, barcodes }: InvoicePDFProps) =
           </View>
         )}
 
-        {/* Signature */}
+        {/* Signature & Stamp */}
         {showSignature && (
           <View style={{ marginTop: 30, alignItems: 'flex-end', marginRight: 30 }}>
+            {invoice.organization.logoUrl ? (
+               <View style={{ alignItems: 'center', marginBottom: 5 }}>
+                  <Image src={invoice.organization.logoUrl} style={{ width: 100, height: 50, objectFit: 'contain' }} />
+               </View>
+            ) : (
+               <View style={{ width: 150, height: 50 }} /> // Spacer if no stamp
+            )}
             <View style={{ width: 150, borderBottomWidth: 1, borderBottomColor: '#000', marginBottom: 5 }} />
             <Text style={{ fontSize: 8 }}>Razítko a podpis</Text>
           </View>
